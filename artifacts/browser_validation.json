@@ -1,0 +1,18 @@
+{
+  "browser": "156.0.8078.47",
+  "checks": [
+    "missing input message",
+    "two aligned image upload and result",
+    "mobile layout without horizontal overflow",
+    "raw image detection and verification",
+    "clear photos and reset state",
+    "no severe browser console errors"
+  ],
+  "real_camera_tested": false,
+  "simulated_camera_checks": [
+    "open simulated camera stream",
+    "capture both images and verify with face detection",
+    "start and stop repeated live verification after two successful rounds",
+    "stop camera and release stream"
+  ]
+}

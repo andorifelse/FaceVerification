@@ -1,0 +1,62 @@
+# Python 编译文件与工具缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# 虚拟环境与构建产物
+.venv/
+venv/
+env/
+ENV/
+.tox/
+.nox/
+build/
+dist/
+*.egg-info/
+
+# 本地数据集与原始作业附件
+/datasets/
+lfw-align-128/
+lfw_test_pair.txt
+/faceverificationsystem.avi
+/说明.docx
+
+# 模型权重与序列化特征
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.pkl
+*.pickle
+*.joblib
+
+# 忽略可重新生成的大型缓存；保留报告图片、指标、阈值与数据划分
+/artifacts/**/*.npz
+/artifacts/**/*.npy
+/runs/
+/wandb/
+/lightning_logs/
+/logs/
+*.log
+
+# 编辑器与操作系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# 本地环境配置；保留可提交的示例
+.env
+.env.*
+!.env.example
+!.env.template

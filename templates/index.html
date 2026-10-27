@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Face Verification · 人脸验证</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Microsoft YaHei",sans-serif;color:#203438;background:#f3f5f4}*{box-sizing:border-box}body{margin:0}main{max-width:1080px;margin:auto;padding:44px 24px}.eyebrow{font-size:12px;letter-spacing:3px;color:#3d7771}h1{font-size:36px;margin:12px 0}.intro{color:#667775;line-height:1.8;margin:0 0 30px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.card,.camera,.result{background:white;border:1px solid #dfe7e3;border-radius:16px;padding:22px}.card h2{font-size:17px;margin:0 0 16px}.preview{height:260px;background:#edf2ef;border-radius:9px;display:flex;justify-content:center;align-items:center;overflow:hidden;color:#80928a}.preview img{width:100%;height:100%;object-fit:contain}input[type=file]{margin-top:16px;max-width:100%}button{font:inherit;cursor:pointer;border:1px solid #cbdad3;background:#fff;border-radius:8px;padding:11px 18px;color:#284e43}button.primary{background:#246d59;color:white;border-color:#246d59}button:disabled{opacity:.5;cursor:wait}.actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:20px 0}label{font-size:14px;color:#526a61}.result{margin:22px 0;min-height:112px}.result strong{font-size:24px;display:block;margin-bottom:8px}.result p{color:#62786d;margin:7px 0}.ok{border-left:5px solid #26966d}.no{border-left:5px solid #d47c4b}.error{border-left:5px solid #c25454}.camera{margin-top:24px}video{width:100%;max-height:320px;background:#182920;border-radius:8px;margin-top:18px}.hint{font-size:13px;color:#72847b;line-height:1.7}footer{font-size:12px;color:#8c9b93;margin:24px 0}@media(max-width:650px){.grid{grid-template-columns:1fr}main{padding:24px 16px}h1{font-size:28px}.preview{height:220px}}
+</style></head>
+<body><main>
+<div class="eyebrow">FACE VERIFICATION / 人脸验证</div>
+<h1>两张照片，是同一个人吗？</h1>
+<p class="intro">上传照片或使用摄像头采集，系统会检测人脸并比较相似度。每张照片请只保留一张清晰人脸。</p>
+<div class="grid">
+<section class="card"><h2>01 · 参考照片</h2><div class="preview" id="preview1">选择一张参考照片</div><input id="file1" type="file" accept="image/*" aria-label="选择参考照片"></section>
+<section class="card"><h2>02 · 待验证照片</h2><div class="preview" id="preview2">选择一张待验证照片</div><input id="file2" type="file" accept="image/*" aria-label="选择待验证照片"></section>
+</div>
+<div class="actions"><button class="primary" id="verify">开始验证</button><label><input id="aligned" type="checkbox"> 输入为已对齐的人脸图片</label><button id="clear">清空</button></div>
+<p class="hint">普通照片会先检测和对齐；CASIA、LFW 等已裁剪的人脸图片可勾选“已对齐”。</p>
+<section class="result" id="result" role="status" aria-live="polite"><strong>等待验证</strong><p>添加两张照片后开始。</p></section>
+<section class="camera"><h2 style="font-size:18px;margin-top:0">摄像头采集</h2>
+<p class="hint">开启摄像头后，可先拍摄参考照，再拍摄待验证照；连续验证会定时对比参考照与当前画面。图片只在当前请求中处理。</p>
+<div class="actions"><button id="openCamera">开启摄像头</button><button id="capture1">拍为参考照</button><button id="capture2">拍为待验证照</button><button id="live">连续验证</button><button id="stopCamera">关闭摄像头</button></div>
+<video id="video" autoplay playsinline muted hidden></video><canvas id="canvas" hidden></canvas>
+</section><footer>FaceMobileNet · 余弦相似度验证 · 相似度分数不代表概率</footer>
+</main><script>
+const $=id=>document.getElementById(id);let blobs=[null,null],stream=null,busy=false,live=false,timer=null;const urls=[null,null];
+function status(title,detail,kind=''){const box=$('result');box.className='result '+kind;box.replaceChildren();const strong=document.createElement('strong'),p=document.createElement('p');strong.textContent=title;p.textContent=detail;box.append(strong,p)}
+function preview(index,src){const img=document.createElement('img');img.src=src;img.alt=index===0?'参考照片':'待验证照片';$('preview'+(index+1)).replaceChildren(img)}
+function setPhoto(index,blob){blobs[index]=blob;if(urls[index])URL.revokeObjectURL(urls[index]);urls[index]=URL.createObjectURL(blob);preview(index,urls[index]);}
+[0,1].forEach(i=>$('file'+(i+1)).addEventListener('change',e=>{if(e.target.files[0])setPhoto(i,e.target.files[0])}));
+async function verify(){if(busy)return;if(!blobs.every(Boolean)){status('还缺少照片','请添加参考照片和待验证照片。','error');return}busy=true;$('verify').disabled=true;status('正在验证','正在分析两张人脸，请稍候…');try{const form=new FormData();form.append('image1',blobs[0],'reference.jpg');form.append('image2',blobs[1],'candidate.jpg');form.append('aligned',$('aligned').checked?'true':'false');const response=await fetch('/api/verify',{method:'POST',body:form});const data=await response.json();if(!response.ok)throw new Error(data.error||'请求失败');data.previews.forEach((src,i)=>preview(i,src));status(data.same_person?'判断为同一个人':'判断为不同的人',`相似度 ${data.similarity.toFixed(4)} · 判定阈值 ${data.threshold.toFixed(4)}`,data.same_person?'ok':'no')}catch(e){status('验证未完成',e.message,'error')}finally{busy=false;$('verify').disabled=false}}
+$('verify').onclick=verify;
+function stopLive(){live=false;clearTimeout(timer);$('live').textContent='连续验证'}
+function stopCamera(){stopLive();if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('video').srcObject=null;$('video').hidden=true}
+$('clear').onclick=()=>{stopLive();blobs=[null,null];[0,1].forEach(i=>{if(urls[i])URL.revokeObjectURL(urls[i]);urls[i]=null;$('file'+(i+1)).value='';$('preview'+(i+1)).textContent='请选择照片'});status('等待验证','添加两张照片后开始。')};
+$('openCamera').onclick=async()=>{try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('浏览器无法访问摄像头，请使用 localhost 或 HTTPS。');stopCamera();stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});$('video').srcObject=stream;$('video').hidden=false;await $('video').play()}catch(e){status('摄像头无法开启',e.message,'error')}};
+async function capture(index){const video=$('video');if(!stream||!video.videoWidth)throw new Error('请先开启摄像头并等待画面出现。');const canvas=$('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;canvas.getContext('2d').drawImage(video,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.9));setPhoto(index,blob);$('aligned').checked=false}
+for(const i of [0,1])$('capture'+(i+1)).onclick=async()=>{try{await capture(i)}catch(e){status('拍摄未完成',e.message,'error')}};
+$('live').onclick=async()=>{if(live){stopLive();return}if(!blobs[0]||!stream){status('尚未准备好','请先开启摄像头，并添加或拍摄参考照片。','error');return}live=true;$('live').textContent='停止连续验证';async function tick(){if(!live)return;try{await capture(1);await verify()}catch(e){status('连续验证暂停',e.message,'error');stopLive()}if(live)timer=setTimeout(tick,1000)}await tick()};
+$('stopCamera').onclick=stopCamera;window.addEventListener('beforeunload',stopCamera);
+</script></body></html>
