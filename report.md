@@ -1,20 +1,36 @@
-# Face Verification 实验报告：质量加权一致性微调与类内变化抑制
+# 实验报告
 
-## 1. 任务、运行与交付
+## How to run code
 
-按 `说明.docx` 提供 `Y = FaceVerification(X1, X2)`，输入两张已对齐人脸图像路径，返回 Python `int`：同人 1、异人 0。普通照片由 YuNet 检测、五点相似变换对齐，网页支持上传照片、摄像头拍照与连续验证。
-
-本轮针对“普通微调与预训练 ViT 准确率基本持平”的问题，在同一预训练初始化上探索质量加权的清晰目标一致性微调、类内变化抑制投影及其组合。选择结果为 **增强微调 + 类内变化抑制投影**；方法选择只看 CASIA 验证身份，选择记录写入后才执行本轮最终 LFW 和新增 CASIA 审计评估。
-
-本轮实测的明确收益包括：**单独质量加权增强微调**在原始 LFW 十折准确率上从预训练的 99.15% 到 99.22%，提高 0.067 个百分点，6,000 对中从 51 个错误减至 47 个；**按 CASIA 规则选中的组合方法**在降质 DevTest 上从 98.10% 到 98.30%。这是不同设置下的有限改进，不代表同一模型在所有指标上都更好。
+首先 git clone 我们的仓库，并下载权重
 
 ```bash
-cd /home/wzc/datasets/casia/faceRecognitionCASIA
-python -m pip install -r requirements.txt
-FACE_DEVICE=cuda:7 python app.py
+git clone git@github.com:andorifelse/FaceVerification.git
 ```
 
-访问 `http://127.0.0.1:7860`，普通照片自动检测对齐；已对齐图像勾选相应选项。单卡环境把 `cuda:7` 换成 `cuda:0` 或 `cuda`。没有 CUDA 时可在 CPU 推理。图片不保存到服务器文件。
+接着安装依赖
+
+```bash
+cd /home/wzc/datasets/casia/faceRecognitionCASIA # replace your program path
+python -m pip install -r requirements.txt
+```
+
+在项目根目录下运行：
+
+```bash
+FACE_DEVICE=cuda:7 FACE_CHECKPOINT=checkpoints/my_experiments/vit_robust.pth FACE_CALIBRATION=artifacts/my_experiments/vit_robust_eval/calibration.json python app.py
+```
+
+其中：
+
+- `FACE_DEVICE`：推理设备，`cuda:7` 表示第 8 张 GPU，无 CUDA 时默认设置为 `cpu`。
+- `FACE_CHECKPOINT`：模型权重文件路径。
+- `FACE_CALIBRATION`：模型校准配置文件路径。
+
+启动后访问 `http://127.0.0.1:7860`，即可看到我们的人脸识别系统。
+
+
+我们按照要求也提供了 `Y = FaceVerification(X1, X2)` 这样的统一接口，输入两张已对齐人脸图像路径，返回 Python `int`：同人 1、异人 0。
 
 ```python
 from FaceVerification import FaceVerification
@@ -24,35 +40,73 @@ Y = FaceVerification(root + "/Abel_Pacheco/Abel_Pacheco_0001.jpg",
 print(Y)  # int: 1 or 0
 ```
 
-普通照片命令行：`python verification.py samples/009.jpg samples/009.jpg --detect`。
-默认权重 `checkpoints/transformer.pth`，配套阈值 `artifacts/calibration.json`，相似度大于等于 0.252063662 判为同人。模型与阈值通过 SHA-256 校验，分数不是概率。权重约 438 MiB，被 Git 忽略；迁移需单独复制最终权重与配套阈值，或复现实验。
+打开终端，输入命令，你会得到如下结果
 
-## 2. 贡献与结论的边界
+```bash
+(cifar1) wzc@user-Rack-Server:~/datasets/casia/faceRecognitionCASIA$ python
+Python 3.11.16 (main, Aug 27 2026, 14:44:21) [GCC 14.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+Ctrl click to launch VS Code Native REPL (https://aka.ms/python-native-repl)
+>>> from FaceVerification import FaceVerification
 
-我们不把“换用了更强的预训练骨干”全部称作自己的贡献，也不声称下述已有技术为论文级新算法。本轮贡献是一个可复现、有明确对照的迁移方案：用训练身份的初始特征一致性估计样本权重，以清晰图像特征指导降质输入，再学习一个抑制同人变化方向的正则化度量；附带各模块消融和独立身份审计。
+>>> root = "datasets/scikit_learn_data/lfw_home/lfw_funeled_cropped"
+>>> Y = FaceVerification(root + "/Abel_Pacheco/Abel_Pacheco_0001.jpg",
+...                      root + "/Abel_Pacheco/Abel_Pacheco_0004.jpg")
+>>> print(Y)
+1
+```
+也可执行如下脚本检测
 
-下面直接给出最终选定方法相对**完全相同预训练 ViT 初始化、同样翻转融合**的准确率变化，单位为百分点。原始协议与额外降质诊断分开，不能用诊断成绩替换原始 LFW 成绩。
+```bash
+python verification.py samples/009.jpg samples/009.jpg \
+  --detect \
+  --checkpoint checkpoints/my_experiments/vit_robust.pth \
+  --calibration artifacts/my_experiments/vit_robust_eval/calibration.json
+```
 
-| 条件 | LFW DevTest 变化 | LFW 标准十折变化 | 新增 CASIA 审计变化 |
-|---|---:|---:|---:|
-| 原始清晰图像 | +0.000 | -0.050 | +0.049 |
-| 低分辨率/JPEG 诊断 | +0.200 | -0.033 | +0.244 |
+其中：
 
-零或负值均保留。微小变化不能自动称为统计显著提升。公开 LFW 已在前轮被观察，本轮结果属于公开基准的重复评估，不能宣称它是从未看过的外部保留集。教师未公开测试集尚未提供。
+- `--checkpoint`：模型权重。
+- `--calibration`：权重对应的判定阈值。
+- `--detect`：先检测并对齐人脸，再进行验证。
 
-若只希望体验没有附加类内投影的梯度微调版本，可使用 `checkpoints/transformer_robust.pth` 搭配 `artifacts/refinement/calibration_robust.json`。它是完整消融中的预定候选，不因看到 LFW 分数而替换默认模型；其十折提升仅相当于少错 4 对，不宣称统计显著。默认组合版本保留 CASIA AUC 的选择规则。
+打开终端，输入以上命令，你会得到如下结果
 
-## 3. 初始化、数据与许可
+```bash
+(cifar1) wzc@user-Rack-Server:~/datasets/casia/faceRecognitionCASIA$ python verification.py samples/009.jpg samples/009.jpg \
+  --detect \
+  --checkpoint checkpoints/my_experiments/vit_robust.pth \
+  --calibration artifacts/my_experiments/vit_robust_eval/calibration.json
+[ WARN:0@0.034] global net_impl_backend.cpp:345 setPreferableTarget Targets are not supported by the new graph engine for now
+{
+  "same_person": 1,
+  "similarity": 1.0,
+  "threshold": 0.2779906392097473,
+  "boxes": [
+    [
+      63,
+      42,
+      188,
+      212
+    ],
+    [
+      63,
+      42,
+      188,
+      212
+    ]
+  ]
+}
+```
 
-骨干来自 CVLFace 作者的 `minchul/cvlface_adaface_vit_base_webface4m`，固定版本 `c6fed2ff09ac0a29cccc72c09127ad7b4bd3fa9e`，初始化 SHA-256 为 `5fafd6b7d599a3ede5fac5bd1d01ad05e9e93e89b39b7687d4a3bc93ff2aebc0`。作者声明使用 WebFace4M、AdaFace 预训练，本次未下载其原始数据。代码采用 MIT 许可证，模型卡要求遵守训练数据许可；详见 `third_party/`。
+
+## 3. 我们使用的模型
+
+实验模型采用 CVLFace 作者的 `minchul/cvlface_adaface_vit_base_webface4m`，固定版本 `c6fed2ff09ac0a29cccc72c09127ad7b4bd3fa9e`。
 
 ViT 输入 RGB 112×112，8×8 patch，196 token，内部维度 512，24 个 Transformer 块、16 头注意力、扩展比 3 的 ReLU6 MLP，最终投影为 512 维。原生 PyTorch SDPA 与显式注意力公式一致，测试覆盖；不执行模型仓库远程 Python。
 
-本地 CASIA 版本有 10,575 个身份目录、454,191 张 JPG。沿用固定种子 42 的 4,096 个训练身份、65,536 张图像；256 个验证身份、4,096 张图像与训练身份不重叠。它们可能与上游预训练人物重叠，因此“未见身份”仅指未参与本地训练。
-
-额外审计集从其余 CASIA 身份中以种子 314 选择 256 个身份，每人 16 张，不与训练/选模型身份重叠。前 128 个身份标定审计阈值，后 128 个身份评估，共 4,096 对测试配对；这些身份的结果不参与方法选择。清单保存于 `artifacts/refinement/audit_split.json`。
-
-## 4. 方法
+## 4. 我们的微调策略
 
 ### 4.1 质量加权的一致性微调
 
@@ -156,13 +210,6 @@ python scripts/run_refinement.py --device cuda:7
 
 ![最新界面](artifacts/demo.png)
 
-## 8. 局限与诚实解释
-
-1. 结构、CosFace、特征保持和类内白化均有既有研究基础；本次是任务导向的组合与受控探索，不声称提出全新通用算法。
-2. 质量权重、训练增强和额外投影可能影响不同人群与困难姿态；质量启发式不是标注真值，可能错误抑制困难但正确的样本。
-3. 明确区分预训练收益、本轮微调收益、类内投影收益，清晰/降质条件的零收益或回退不能隐藏。很小的百分点变化需要更多样本和多个随机种子验证。
-4. 只有一组训练随机种子；公开 LFW 已多轮观察，跨轮实验存在适应公开基准的风险。新增 CASIA 审计不参与选模型，但与 CASIA 同域且可能与上游预训练身份重叠。
-5. 未公开测试、真实设备低质量采集及活体检测均未评估。照片相似性验证不能等同于安全身份认证。
 
 ## 9. 参考资料与致谢
 
@@ -170,12 +217,161 @@ python scripts/run_refinement.py --device cuda:7
 - [Vision Transformer 原论文](https://arxiv.org/abs/2010.11929)、[AdaFace 原论文](https://arxiv.org/abs/2204.00964)：分别为骨干与初始化来源。本轮质量启发式不是 AdaFace 自适应间隔的复现。
 - [CosFace 原论文](https://openaccess.thecvf.com/content_cvpr_2018/html/Wang_CosFace_Large_Margin_CVPR_2018_paper.html)。
 - [YuNet 官方实现与模型](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)。
-- 原始 `legacy/README.md`、`blog/` 及其对 insightface、InsightFace_Pytorch、arcface-pytorch 的致谢。
 
 <!-- USER_EXPERIMENTS_START -->
 ## 10. 用户独立复现实验
 
-本节只整理 `artifacts/my_experiments/` 中用户本次完成的三组实验，不将此前自动实验的 99.22% 等结果混入本次复现。这里只读取记录与缓存，没有重新训练，也没有切换当前演示权重。
+
+**二、实验 1：微调 FaceMobileNet，再测试**
+
+**第 1 步：训练。**
+
+从项目原有的 `18.pth` 初始化，微调整个 FaceMobileNet：
+
+```bash
+python train_mobile.py \
+  --init checkpoints/18.pth \
+  --output checkpoints/my_experiments/mobile_full.pth \
+  --work-dir artifacts/my_experiments/mobile_train \
+  --train-ids 4096 \
+  --validation-ids 256 \
+  --per-id 16 \
+  --epochs 8 \
+  --batch-size 128 \
+  --lr 0.00005 \
+  --anchor-weight 10 \
+  --seed 42 \
+  --device cuda:7 \
+  --full
+```
+
+
+完成后主要得到：
+
+```text
+checkpoints/my_experiments/mobile_full.pth
+
+artifacts/my_experiments/mobile_train/
+├── split.json
+├── training.json
+└── features_*.npz
+```
+
+`training.json` 记录每轮损失、验证成绩、选中轮次以及参数变化数量。
+
+**第 2 步：评估。**
+
+```bash
+python evaluate.py \
+  --checkpoint checkpoints/my_experiments/mobile_full.pth \
+  --mobile-checkpoint checkpoints/my_experiments/mobile_full.pth \
+  --output artifacts/my_experiments/mobile_eval \
+  --device cuda:7
+```
+
+
+结果保存到：
+
+```text
+artifacts/my_experiments/mobile_eval/evaluation.json
+```
+
+
+
+**三、实验 2：直接测试预训练 ViT**
+
+
+**第 1 步：确认初始化权重。**
+
+```bash
+python scripts/download_transformer.py
+```
+
+
+**第 2 步：直接评估。**
+
+```bash
+python evaluate.py \
+  --checkpoint checkpoints/pretrained_vit/model.safetensors \
+  --mobile-checkpoint checkpoints/my_experiments/mobile_full.pth \
+  --output artifacts/my_experiments/vit_pretrained_eval \
+  --device cuda:7
+```
+
+结果在：
+
+```text
+artifacts/my_experiments/vit_pretrained_eval/evaluation.json
+```
+
+
+**四、实验 3：微调 ViT，再测试**
+
+
+**第 1 步：训练。**
+
+```bash
+python train_transformer.py \
+  --init checkpoints/pretrained_vit/model.safetensors \
+  --output checkpoints/my_experiments/vit_robust.pth \
+  --work-dir artifacts/my_experiments/vit_robust_train \
+  --train-ids 4096 \
+  --validation-ids 256 \
+  --per-id 16 \
+  --epochs 8 \
+  --batch-size 128 \
+  --workers 8 \
+  --train-blocks 4 \
+  --lr 0.00002 \
+  --head-lr 0.00004 \
+  --anchor-weight 2 \
+  --recipe robust \
+  --augmentation-probability 0.5 \
+  --seed 42 \
+  --device cuda:7
+```
+
+这组配置会：
+
+- 冻结前 20 个 Transformer 块，微调最后 4 个块及特征头。
+- 固定 BatchNorm 参数和运行统计。
+- 使用身份分类损失和清晰目标特征一致性约束。
+- 根据初始特征与身份中心的一致性，对训练样本加权。
+- 以 50% 的概率对输入做分辨率增强。
+- 使用 CASIA 验证结果选择权重。
+
+主要参数：
+
+| 参数 | 含义 |
+|---|---|
+| `--train-blocks 4` | 微调最后 4 个 Transformer 块 |
+| `--lr` | Transformer 块及最终 LayerNorm 的学习率 |
+| `--head-lr` | 特征投影头学习率 |
+| `--recipe robust` | 启用质量加权和分辨率增强 |
+| `--augmentation-probability` | 训练样本执行分辨率增强的概率 |
+| `--anchor-weight` | 与初始化清晰特征保持一致的约束强度 |
+
+完成后得到：
+
+```text
+checkpoints/my_experiments/vit_robust.pth
+
+artifacts/my_experiments/vit_robust_train/
+├── split.json
+├── training.json
+└── teacher_*.npz
+```
+
+**第 2 步：评估。**
+
+```bash
+python evaluate.py \
+  --checkpoint checkpoints/my_experiments/vit_robust.pth \
+  --mobile-checkpoint checkpoints/my_experiments/mobile_full.pth \
+  --pretrained checkpoints/pretrained_vit/model.safetensors \
+  --output artifacts/my_experiments/vit_robust_eval \
+  --device cuda:7
+```
 
 ### 实验配置与核验
 
@@ -262,19 +458,7 @@ ViT 平均总损失由 0.112846 到 0.025960；降质 CASIA 验证 AUC 初始为
 
 阈值按模型分别在校准集标定。数值较高/较低本身不代表模型较好；余弦相似度不是概率。FAR=0 只表示这 500 对异人中未出现误接受，不代表实际风险为零。
 
-### 指标速查
 
-| 指标 | 解释 / 公式 | 方向 |
-|---|---|---|
-| Accuracy | `(TP+TN)/全部配对数` | 越高越好 |
-| Balanced accuracy | `0.5 × [TP/(TP+FN) + TN/(TN+FP)]`，两类等权 | 越高越好 |
-| TAR | `TP/(TP+FN)`，同人被正确接受的比例 | 越高越好 |
-| FAR | `FP/(FP+TN)`，异人被误判同人的比例 | 越低越好 |
-| FRR | `FN/(TP+FN)`，同人被误判异人的比例 | 越低越好 |
-| AUC | ROC 曲线下面积，描述不同阈值下的分数排序/区分能力，不是准确率 | 越接近 1 越好 |
-| EER | 随阈值变化时 FAR 与 FRR 相等附近的插值错误率，不一定对应部署阈值 | 越低越好 |
-| 十折均值 / 标准差 | 10 个留出折准确率的均值及折间波动，不是均值的置信区间 | 结合样本量解释 |
-| Calibration accuracy | 选阈值所用校准集上的表现，不能当独立测试分数 | 不用于替代测试 |
 
 ### 原始文件、权重与复现
 
@@ -290,11 +474,5 @@ ViT 平均总损失由 0.112846 到 0.025960；降质 CASIA 验证 AUC 初始为
 原始结果目录：`artifacts/my_experiments/mobile_eval/`、`vit_pretrained_eval/`、`vit_robust_eval/`。训练记录：`mobile_train/training.json`、`vit_robust_train/training.json`；两组 `split.json` 完全相同。
 
 整理脚本：`python scripts/summarize_experiments.py`。输出为 `artifacts/my_experiments/summary/summary.md`、`summary.json`、`comparison.csv` 和两张图。CSV 数值用 0~1 原始比例，百分比显示时乘以 100；本脚本不更换默认推理权重或校准文件。
-
-使用本次 ViT 模型演示：
-
-```bash
-FACE_DEVICE=cuda:7 FACE_CHECKPOINT=checkpoints/my_experiments/vit_robust.pth FACE_CALIBRATION=artifacts/my_experiments/vit_robust_eval/calibration.json python app.py
-```
 
 <!-- USER_EXPERIMENTS_END -->
