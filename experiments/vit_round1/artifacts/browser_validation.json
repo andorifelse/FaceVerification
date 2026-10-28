@@ -1,0 +1,20 @@
+{
+  "browser": "156.0.8078.47",
+  "backbone": "face_vit",
+  "checkpoint_sha256": "f20f7d2ce5ee0b09fd60590c68d65a4a2647d624f7a8b24426a47053620f3190",
+  "checks": [
+    "missing input message",
+    "aligned pair verified with new Transformer and threshold",
+    "mobile layout without horizontal overflow",
+    "raw photo detection and Transformer verification",
+    "clear photos and reset state",
+    "no severe browser console errors"
+  ],
+  "simulated_camera_checks": [
+    "open simulated camera stream",
+    "capture and compare both camera frames",
+    "two live verification rounds and stop",
+    "release camera stream"
+  ],
+  "real_camera_tested": false
+}

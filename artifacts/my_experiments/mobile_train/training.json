@@ -1,0 +1,73 @@
+{
+  "arguments": {
+    "data_root": "/home/wzc/datasets/casia/faceRecognitionCASIA/datasets/CASIA-WebFace-Align-96",
+    "init": "checkpoints/18.pth",
+    "output": "checkpoints/my_experiments/mobile_full.pth",
+    "train_ids": 4096,
+    "validation_ids": 256,
+    "per_id": 16,
+    "epochs": 8,
+    "batch_size": 128,
+    "lr": 5e-05,
+    "anchor_weight": 10.0,
+    "seed": 42,
+    "threads": 8,
+    "device": "cuda:7",
+    "scratch": false,
+    "full": true,
+    "work_dir": "artifacts/my_experiments/mobile_train"
+  },
+  "initial_validation_balanced_accuracy": 0.9136962890625,
+  "best_epoch": 2,
+  "best_validation_balanced_accuracy": 0.933349609375,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 2.8602177388966084,
+      "validation_balanced_accuracy": 0.9317626953125
+    },
+    {
+      "epoch": 2,
+      "loss": 2.1525894356891513,
+      "validation_balanced_accuracy": 0.933349609375
+    },
+    {
+      "epoch": 3,
+      "loss": 1.877003091853112,
+      "validation_balanced_accuracy": 0.9320068359375
+    },
+    {
+      "epoch": 4,
+      "loss": 1.6950177911203355,
+      "validation_balanced_accuracy": 0.9320068359375
+    },
+    {
+      "epoch": 5,
+      "loss": 1.5501092970371246,
+      "validation_balanced_accuracy": 0.9320068359375
+    },
+    {
+      "epoch": 6,
+      "loss": 1.434478890383616,
+      "validation_balanced_accuracy": 0.9310302734375
+    },
+    {
+      "epoch": 7,
+      "loss": 1.3510600462323055,
+      "validation_balanced_accuracy": 0.930908203125
+    },
+    {
+      "epoch": 8,
+      "loss": 1.2956457624677569,
+      "validation_balanced_accuracy": 0.9312744140625
+    }
+  ],
+  "changed_floating_values": 1989331,
+  "checkpoint_sha256": "aafc09b8ccb39f3dded7966eae6c7944003c0c1d81d6e569ff68fb5ecef38125",
+  "initial_checkpoint_sha256": "027bf59d0af6357ff7dcb13bc7fea6f3223fa023f20ebfbc1deac4ede32e632c",
+  "elapsed_seconds": 402.7675449589733,
+  "train_images": 65536,
+  "validation_images": 4096,
+  "torch_version": "2.9.1+cu128",
+  "numpy_version": "2.4.6"
+}

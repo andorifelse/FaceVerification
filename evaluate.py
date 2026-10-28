@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import math
 import time
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def extract(verifier, paths, output, batch_size):
             normal,flipped = [],[]
             with torch.inference_mode():
                 for start in range(0,len(paths),batch_size):
-                    batch = torch.stack([config.test_transform(open_image(p)) for p in paths[start:start+batch_size]]).to(verifier.device)
+                    batch = torch.stack([verifier.transform(open_image(p)) for p in paths[start:start+batch_size]]).to(verifier.device)
                     normal.append(verifier.net.forward_features(batch).cpu().numpy())
                     flipped.append(verifier.net.forward_features(torch.flip(batch,[-1])).cpu().numpy())
                     if start % (batch_size*10) == 0:
@@ -88,8 +89,10 @@ def cross_validate(scores, labels, folds):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--checkpoint',type=Path,default=config.checkpoints/'finetuned.pth')
+    parser.add_argument('--checkpoint',type=Path,default=config.checkpoints/config.test_model)
     parser.add_argument('--baseline',type=Path,default=config.checkpoints/'18.pth')
+    parser.add_argument('--pretrained',type=Path,default=config.checkpoints/'pretrained_vit/model.safetensors')
+    parser.add_argument('--mobile-checkpoint',type=Path,default=config.checkpoints/'finetuned.pth')
     parser.add_argument('--root',type=Path,default=config.test_root)
     parser.add_argument('--calibration-pairs',type=Path,default=config.calibration_list)
     parser.add_argument('--test-pairs',type=Path,default=config.test_list)
@@ -111,7 +114,11 @@ def main():
     standard, header = read_pairs(args.standard_pairs,args.root)
     paths = sorted({p for pair in calibration+test+standard for p in pair[:2]})
     rows, score_sets, selected_scores = {}, {}, None
-    for name, checkpoint in [('baseline',args.baseline),('finetuned',args.checkpoint)]:
+    models = [('baseline',args.baseline)]
+    if args.mobile_checkpoint.exists():models.append(('mobile_finetuned',args.mobile_checkpoint))
+    if args.pretrained.exists():models.append(('vit_pretrained',args.pretrained))
+    models.append(('finetuned',args.checkpoint))
+    for name, checkpoint in models:
         verifier = FaceVerifier(checkpoint,threshold=0.,tta=False,device=args.device)
         raw, flipped = extract(verifier,paths,args.output,args.batch_size)
         for tta in [False,True]:
@@ -123,6 +130,7 @@ def main():
             row = summarize(ts,ty,threshold)
             row['calibration_balanced_accuracy'] = ca
             row['checkpoint_sha256'] = verifier.model_hash
+            row['backbone'] = verifier.metadata.get('backbone','fmobile')
             ss, sy = pair_scores(features,paths,standard)
             if not header or len(header) != 2:
                 raise ValueError('Standard LFW evaluation requires its official folds header')
@@ -135,7 +143,8 @@ def main():
                             'calibration_protocol':str(args.calibration_pairs),
                             'calibration_protocol_sha256':sha256(args.calibration_pairs),
                             'calibration_pairs':len(calibration),'decision':'cosine_similarity >= threshold',
-                            'preprocessing':'grayscale, resize 128x128, (pixel/255-0.5)/0.5'}
+                            'backbone':verifier.metadata.get('backbone','fmobile'),
+                            'preprocessing':'RGB, resize 112x112, (pixel/255-0.5)/0.5' if verifier.metadata.get('backbone')=='face_vit' else 'grayscale, resize 128x128, (pixel/255-0.5)/0.5'}
                 (args.output/'calibration.json').write_text(json.dumps(settings,indent=2))
                 selected_scores = ts,ty,threshold
     record = {'selected_variant':'finetuned_flip', 'calibration_pairs':len(calibration),
@@ -143,11 +152,26 @@ def main():
               'calibration_test_identity_overlap':len({Path(p).parent.name for p in cal_images}&{Path(p).parent.name for p in test_images}),
               'standard_pairs':len(standard),'standard_protocol_sha256':sha256(args.standard_pairs),
               'variants':rows,'elapsed_seconds':time.perf_counter()-started,
-              'selection':'model selected using CASIA validation; final variant predetermined as finetuned + flip'}
+              'selection':'model selected using held-out CASIA identity validation; final variant predetermined as finetuned Transformer + flip',
+              'calibration_protocol_sha256':sha256(args.calibration_pairs),
+              'test_protocol_sha256':sha256(args.test_pairs),
+              'test_root':str(args.root.resolve())}
+    baseline_s,labels = score_sets['baseline_single']
+    final_s,_,final_threshold = selected_scores
+    old_correct = (baseline_s>=rows['baseline_single']['threshold'])==labels
+    new_correct = (final_s>=final_threshold)==labels
+    gained = int(np.sum(new_correct & ~old_correct))
+    lost = int(np.sum(old_correct & ~new_correct))
+    discordant = gained+lost
+    exact_p = min(1.,2*sum(math.comb(discordant,i) for i in range(min(gained,lost)+1))/2**discordant) if discordant else 1.
+    record['paired_comparison'] = {'baseline':'baseline_single','candidate':'finetuned_flip',
+                                  'gained_correct_pairs':gained,'lost_correct_pairs':lost,
+                                  'mcnemar_exact_two_sided_p':exact_p,
+                                  'accuracy_gain_percentage_points':100*(rows['finetuned_flip']['accuracy']-rows['baseline_single']['accuracy'])}
     (args.output/'evaluation.json').write_text(json.dumps(record,indent=2))
     ts,ty,threshold = selected_scores
     with (args.output/'predictions.csv').open('w',newline='') as stream:
-        writer = csv.writer(stream); writer.writerow(['image1','image2','label','similarity','prediction'])
+        writer = csv.writer(stream,lineterminator='\n'); writer.writerow(['image1','image2','label','similarity','prediction'])
         for pair,score in zip(test,ts):
             writer.writerow([str(Path(pair[0]).relative_to(args.root)),str(Path(pair[1]).relative_to(args.root)),pair[2],float(score),int(score>=threshold)])
     plot_results(args.output,rows,score_sets)

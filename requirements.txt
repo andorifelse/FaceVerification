@@ -5,3 +5,4 @@ Pillow>=10,<13
 opencv-python-headless>=4.8,<6
 Flask>=3,<4
 matplotlib>=3.8,<4
+safetensors>=0.4,<1

@@ -1,0 +1,16 @@
+{
+  "objective": "Improve locally fine-tuned ViT over its exact pretrained initialization; disclose gains and regressions.",
+  "initialization": "checkpoints/pretrained_vit/model.safetensors",
+  "baseline_sha256": "5fafd6b7d599a3ede5fac5bd1d01ad05e9e93e89b39b7687d4a3bc93ff2aebc0",
+  "gradient_data": "CASIA training identities in artifacts/transformer_training/split.json only",
+  "model_selection": "CASIA validation identities only; compare clean AUC and fixed deterministic low-resolution/JPEG diagnostic AUC; no LFW DevTest or standard-fold selection.",
+  "candidate_families": [
+    "quality-filtered within-class covariance residual projection: strengths [0.25,0.5,0.75,1.0], shrinkage [0.05,0.2,0.5]",
+    "quality-weighted robustness consistency + CosFace, last 4 blocks, 8 epochs, augmentation probability 0.5, anchor weight 2.0",
+    "compose fitted within-class projection with robust-trained ViT, same validation grid and family selection rule"
+  ],
+  "final_evaluation": "Once selected, compare exact initialization, round1, and selected refinement on original clean DevTest and official 10 folds; additionally report a separately labelled deterministic low-resolution/JPEG diagnostic on the same pairs.",
+  "limits": "LFW test results have been observed in previous rounds; describe as public benchmark re-evaluation, not pristine untouched holdout. No inference-time access to test labels or identity-specific rules.",
+  "family_selection": "Across candidate families, select maximum mean clean/diagnostic CASIA validation AUC, subject to clean AUC >= pretrained -.001. Final LFW evaluation follows selection.",
+  "audit": "Additional 256 CASIA identities, seed 314, excluding all existing train/validation identities, will be used only for final comparison; no selection based on the audit."
+}

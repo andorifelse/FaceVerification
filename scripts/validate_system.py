@@ -1,9 +1,12 @@
 """Record inference timing and representative errors without changing the model."""
 import csv
+import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
+import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -14,13 +17,19 @@ from verification import FaceVerifier, open_image
 
 
 def main():
-    verifier = FaceVerifier(device='cpu')
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--device',default=config.device)
+    args=parser.parse_args()
+    verifier = FaceVerifier(device=args.device)
+    os.environ['FACE_DEVICE']=args.device
+    def synchronize():
+        if str(args.device).startswith('cuda'):torch.cuda.synchronize(args.device)
     detector = FaceDetector()
     image = ROOT/'samples/009.jpg'
     verifier.compare(image,image)
     pair_times = []
     for _ in range(10):
-        started = time.perf_counter();verifier.compare(image,image)
+        synchronize();started = time.perf_counter();verifier.compare(image,image);synchronize()
         pair_times.append(time.perf_counter()-started)
     detector.single(image)
     detection_times = []
@@ -30,7 +39,8 @@ def main():
     from FaceVerification import FaceVerification
     value = FaceVerification(str(image),str(image))
     assert type(value) is int and value == 1
-    results = {'device':'cpu','threads':8,'timing_iterations':10,
+    results = {'device':args.device,'threads':torch.get_num_threads(),'timing_iterations':10,
+               'backbone':verifier.metadata.get('backbone','fmobile'),'checkpoint_sha256':verifier.model_hash,
                'mean_pair_seconds':sum(pair_times)/len(pair_times),
                'mean_detection_seconds':sum(detection_times)/len(detection_times),
                'pair_seconds':pair_times,'detection_seconds':detection_times,

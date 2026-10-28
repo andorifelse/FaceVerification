@@ -1,69 +1,80 @@
-"""Build report.md and figures from the saved experiment records."""
+"""Generate the Transformer report from actual saved training/evaluation records."""
 import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 
 
 def main():
-    artifacts = ROOT/'artifacts'
-    training = json.loads((artifacts/'training/training.json').read_text())
-    evaluation = json.loads((artifacts/'evaluation.json').read_text())
-    calibration = json.loads((artifacts/'calibration.json').read_text())
-    final = evaluation['variants']['finetuned_flip']
-    variants = evaluation['variants']
-    names = {'baseline_single':'原权重，单视图','baseline_flip':'原权重，翻转融合',
-             'finetuned_single':'微调，单视图','finetuned_flip':'微调，翻转融合（交付）'}
-    table = '\n'.join(f'| {names[key]} | {row["threshold"]:.6f} | {row["accuracy"]:.2%} | {row["auc"]:.4f} | {row["far"]:.2%} | {row["frr"]:.2%} | {row["lfw_standard_cv"]["mean_accuracy"]:.2%} ± {row["lfw_standard_cv"]["std_accuracy"]:.2%} |' for key,row in variants.items())
+    artifacts=ROOT/'artifacts'
+    if (artifacts/'refinement/evaluation.json').exists():
+        from build_refinement_report import main as build_refinement_report
+        return build_refinement_report()
+    training=json.loads((artifacts/'transformer_training/training.json').read_text())
+    evaluation=json.loads((artifacts/'evaluation.json').read_text())
+    calibration=json.loads((artifacts/'calibration.json').read_text())
+    provenance=json.loads((ROOT/'third_party/vit_initialization.json').read_text())
+    variants=evaluation['variants'];final=variants['finetuned_flip'];baseline=variants['baseline_single']
+    if final.get('backbone')!='face_vit':raise ValueError('Run the Transformer evaluation before building its report')
+    if final['checkpoint_sha256']!=training['checkpoint_sha256'] or final['checkpoint_sha256']!=calibration['checkpoint_sha256']:
+        raise ValueError('Training, evaluation and calibration checkpoints do not match')
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    history = training['history']
-    fig,axes = plt.subplots(1,2,figsize=(10,3.6))
-    axes[0].plot([h['epoch'] for h in history],[h['loss'] for h in history],marker='.')
-    axes[0].set(xlabel='Epoch',ylabel='Training loss',title='CosFace + feature anchoring')
-    axes[1].plot([h['epoch'] for h in history],[h['validation_balanced_accuracy'] for h in history],marker='.')
-    axes[1].axhline(training['initial_validation_balanced_accuracy'],color='gray',linestyle='--',label='Initial model')
-    axes[1].axvline(training['best_epoch'],color='orange',linestyle=':',label='Selected epoch')
-    axes[1].set(xlabel='Epoch',ylabel='Balanced accuracy',title='Held-out CASIA identities')
-    axes[1].legend(fontsize=8)
+    history=training['history']
+    fig,axes=plt.subplots(1,2,figsize=(10,3.8))
+    axes[0].plot([h['epoch'] for h in history],[h['loss'] for h in history],marker='.',label='Total loss')
+    axes[0].plot([h['epoch'] for h in history],[h['classification_loss'] for h in history],marker='.',label='CosFace classification')
+    axes[0].set(xlabel='Epoch',ylabel='Training loss',title='CASIA Transformer fine-tuning');axes[0].legend(fontsize=8)
+    axes[1].plot([0]+[h['epoch'] for h in history],[training['initial_validation_auc']]+[h['validation_auc'] for h in history],marker='.')
+    axes[1].axvline(training['best_epoch'],linestyle=':',color='orange',label='Selected epoch')
+    axes[1].set(xlabel='Epoch',ylabel='AUC',title='Held-out CASIA identities');axes[1].legend(fontsize=8)
     for ax in axes:ax.grid(alpha=.2)
     fig.tight_layout();fig.savefig(artifacts/'training.png',dpi=160);plt.close(fig)
-    extra = ''
+    names={'baseline_single':'原 FaceMobileNet，单视图','baseline_flip':'原 FaceMobileNet，翻转融合',
+           'mobile_finetuned_single':'此前 FaceMobileNet 微调，单视图','mobile_finetuned_flip':'此前 FaceMobileNet 微调，翻转融合',
+           'vit_pretrained_single':'ViT 预训练初始化，单视图','vit_pretrained_flip':'ViT 预训练初始化，翻转融合',
+           'finetuned_single':'本次微调 ViT，单视图','finetuned_flip':'本次微调 ViT，翻转融合（交付）'}
+    table='\n'.join(f'| {names.get(key,key)} | {r["threshold"]:.6f} | {r["accuracy"]:.2%} | {r["auc"]:.6f} | {r["far"]:.2%} | {r["frr"]:.2%} | {r["lfw_standard_cv"]["mean_accuracy"]:.2%} ± {r["lfw_standard_cv"]["std_accuracy"]:.2%} |' for key,r in variants.items())
+    cv=final['lfw_standard_cv'];bcv=baseline['lfw_standard_cv'];paired=evaluation['paired_comparison']
+    original_errors=baseline['fp']+baseline['fn'];final_errors=final['fp']+final['fn']
+    cv_old_errors=sum(r['fp']+r['fn'] for r in bcv['folds'])
+    cv_new_errors=sum(r['fp']+r['fn'] for r in cv['folds'])
+    accuracy_gain=100*(final['accuracy']-baseline['accuracy'])
+    cv_gain=100*(cv['mean_accuracy']-bcv['mean_accuracy'])
+    error_reduction=(original_errors-final_errors)/original_errors
+    pre=variants.get('vit_pretrained_flip')
+    fine_tuning_analysis=''
+    if pre:
+        delta=100*(final['accuracy']-pre['accuracy'])
+        cdelta=100*(cv['mean_accuracy']-pre['lfw_standard_cv']['mean_accuracy'])
+        fine_tuning_analysis=f'''ViT 初始化的 DevTest 准确率已为 {pre['accuracy']:.2%}；本次微调后变化 {delta:+.2f} 个百分点，标准十折变化 {cdelta:+.3f} 个百分点。因此超过旧网络的主要收益来自更强的 Transformer 骨干与大规模预训练，不能归因于本次微调。局部微调并未在 DevTest 上进一步提高准确率，其作用与更新量均如实记录；十折差异也很小，不声称具有统计显著性。'''
+    system=''
     if (artifacts/'system_validation.json').exists():
-        validation = json.loads((artifacts/'system_validation.json').read_text())
-        extra += f"\n系统实测：CPU 上双图接口平均 {validation['mean_pair_seconds']*1000:.1f} ms（已加载模型，包含读取和翻转融合，10 次），单图检测与对齐平均 {validation['mean_detection_seconds']*1000:.1f} ms（10 次）。这是当前机器上的小规模计时，随硬件和输入尺寸变化。\n"
-    if (artifacts/'demo.png').exists():
-        extra += '\n![真实浏览器上传验证界面](artifacts/demo.png)\n'
+        timing=json.loads((artifacts/'system_validation.json').read_text())
+        if timing.get('checkpoint_sha256')==final['checkpoint_sha256']:
+            system+=f"\n加载模型后，设备 `{timing['device']}` 上双图接口平均 {timing['mean_pair_seconds']*1000:.2f} ms，单张样例检测与对齐平均 {timing['mean_detection_seconds']*1000:.2f} ms，均为 10 次测量。GPU 双图计时在前后同步，包含图像读取、预处理与翻转融合，不含首次模型加载和浏览器网络耗时；单张检测由 OpenCV 在 CPU 上执行。\n"
     if (artifacts/'browser_validation.json').exists():
-        browser = json.loads((artifacts/'browser_validation.json').read_text())
-        extra += f"\n浏览器实测（Chrome {browser['browser']}）：通过 {len(browser['checks'])} 项上传、输入提示、手机布局、清空与控制台检查；另通过 {len(browser.get('simulated_camera_checks', []))} 项模拟摄像头检查，涵盖开启、拍摄、连续验证与关闭。没有真实摄像头硬件测试。记录位于 `artifacts/browser_validation.json`。\n"
-    delta_head = (variants['finetuned_flip']['accuracy']-variants['baseline_flip']['accuracy'])*100
-    delta_flip = (variants['finetuned_flip']['accuracy']-variants['finetuned_single']['accuracy'])*100
-    cv = final['lfw_standard_cv']
-    report = f'''# Face Verification 实验报告
+        browser=json.loads((artifacts/'browser_validation.json').read_text())
+        if browser.get('checkpoint_sha256')==final['checkpoint_sha256']:
+            system+=f"\n新模型通过 {len(browser['checks'])} 项真实浏览器上传与布局检查、{len(browser.get('simulated_camera_checks',[]))} 项模拟摄像头检查，记录见 `artifacts/browser_validation.json`。模拟采集不等于真实摄像头硬件测试。\n"
+    if (artifacts/'demo.png').exists():system+='\n![Transformer 网页演示](artifacts/demo.png)\n'
+    a=training['arguments']
+    report=f'''# Face Verification 实验报告：GPU 微调 Vision Transformer
 
-## 1. 任务与完成情况
+## 1. 任务、交付与结论
 
-输入两张人脸图像的路径，输出是否属于同一个人，严格提供 `Y = FaceVerification(X1, X2)`：`Y` 为 Python `int`，同人返回 1，异人返回 0。同时交付支持照片上传、摄像头拍照、连续验证、人脸框和结果反馈的网页系统。
+按照 `说明.docx` 实现 `Y = FaceVerification(X1, X2)`：输入两张已对齐人脸图像的路径，返回 Python `int`，同人返回 1，异人返回 0。另交付单人人脸检测、五点对齐、照片上传、摄像头拍照及连续验证界面。
 
-本报告数值均来自本地实际运行，原始记录保存在 `artifacts/`。独立 LFW DevTest 1,000 对上的交付模型准确率为 **{final['accuracy']:.2%}**，AUC 为 **{final['auc']:.4f}**；标准 LFW 6,000 对十折准确率为 **{cv['mean_accuracy']:.2%} ± {cv['std_accuracy']:.2%}**。两种协议分别报告，不能互相混用。教师未公开测试集未提供，未对其性能作推测。
+本次把默认识别网络替换为 **ViT-Base Transformer**，不再使用项目原有 FaceMobileNet 作为交付识别器。实际在 GPU 上完成 CASIA 微调，选出第 {training['best_epoch']} 轮权重；接口、演示程序、阈值和报告均已切换。旧网络仅作为性能对照。
 
-## 2. 代码与权重来源声明
+相同本地评估协议下，DevTest 准确率由原网络 **{baseline['accuracy']:.2%} 提升到 {final['accuracy']:.2%}**，提高 {accuracy_gain:.2f} 个百分点；1,000 对中的错误从 {original_errors} 对降到 {final_errors} 对，相对减少 {error_reduction:.2%}。标准 LFW 6,000 对十折平均准确率由 **{bcv['mean_accuracy']:.2%} 提升到 {cv['mean_accuracy']:.2%}**，提高 {cv_gain:.2f} 个百分点。本结论只适用于已运行的公开评估，教师未公开测试集尚未提供。
 
-基于随项目提供的 FaceMobileNet、CosFace、ResIRSE 等代码改造，原始 README 已注明参考 insightface、InsightFace_Pytorch、arcface-pytorch，本次保留这些致谢及博客。修改前的关键脚本另存于 `legacy/`。
+## 2. 快速运行
 
-项目原有 `checkpoints/18.pth` 被用作初始化。其 SHA-256 为 `{training['initial_checkpoint_sha256']}`。仅凭已有文件无法证明其最初训练者、使用数据、训练轮数，也不能确认其原始训练是否与 LFW 存在身份重叠，因此本实验不声称完全从零训练或严格排除历史数据重叠。
-
-**本次实际微调**了识别网络的 2048→512 投影层；最终 checkpoint 相对初始化有 **{training['changed_floating_values']:,} 个浮点值发生变化**。未下载或直接提交未经微调的现成身份验证模型。最终文件为 `checkpoints/finetuned.pth`，SHA-256 `{training['checkpoint_sha256']}`。训练代码和逐轮日志均随附。
-
-YuNet 是额外使用的开源**检测器**，只提供人脸框和五个关键点，不输出身份特征；来源与 MIT 许可证保存在 `assets/`。作业说明允许使用开源人脸检测器，MTCNN 为可选方案，本实现使用较轻量的 YuNet。
-
-## 3. 运行方法
-
-建议 Python 3.11。首次运行无需训练或下载模型，随附微调权重、检测器和已校准阈值。
+建议 Python 3.11，依赖版本见 `requirements.txt` 和实测环境记录 `requirements-lock.txt`。
 
 ```bash
 cd /home/wzc/datasets/casia/faceRecognitionCASIA
@@ -71,9 +82,7 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-浏览器打开 `http://127.0.0.1:7860`。上传两张普通照片后点击“开始验证”；系统依次检测、对齐、提取特征、比较并显示分数和阈值。无脸或多脸会明确提示。摄像头功能由浏览器采集，可分别拍照或每轮完成后间隔 1 秒连续验证。访问摄像头需要浏览器允许权限；远程访问一般需要 HTTPS。服务器不会把上传图片保存到文件。
-
-若输入是已经对齐的 CASIA/LFW 裁剪图，勾选“输入为已对齐的人脸图片”，避免再次检测改变裁剪分布。
+浏览器打开 `http://127.0.0.1:7860`。上传两张普通单人照片，系统先检测和对齐，再显示是否同人、余弦相似度和阈值。已经对齐的 CASIA/LFW 图像可勾选“输入为已对齐的人脸图片”。摄像头可拍摄参考照和待验证照，或启动连续验证；localhost/HTTPS 下由浏览器获取摄像头权限。图片不写入服务器文件。
 
 ```python
 from FaceVerification import FaceVerification
@@ -82,114 +91,150 @@ Y = FaceVerification(
     root + "/Abel_Pacheco/Abel_Pacheco_0001.jpg",
     root + "/Abel_Pacheco/Abel_Pacheco_0004.jpg",
 )
-print(Y)  # int，1 或 0
+print(Y)  # Python int，1 或 0
 ```
 
-规定接口采用已对齐输入。普通照片调用 `FaceVerifier().compare(X1, X2, detect=True)`。命令行示例：
+规定接口默认接收已对齐人脸。普通照片可用 `FaceVerifier().compare(X1, X2, detect=True)`，或：
 
 ```bash
 python verification.py samples/009.jpg samples/009.jpg --detect
 ```
 
-缺失文件、损坏图片、无脸或多脸属于输入错误，会抛出异常或在界面提示，不伪造为异人结果。余弦相似度不代表概率。
+默认权重为 `checkpoints/transformer.pth`，阈值为 `artifacts/calibration.json`。本地已生成，无需再次训练；CPU 也能推理，有 CUDA 时默认使用 GPU。可用 `FACE_DEVICE=cuda:7 python app.py` 选择显卡，用 `FACE_CHECKPOINT`、`FACE_CALIBRATION` 指定配套文件。模型和阈值使用 SHA-256 绑定，不允许混用。
 
-## 4. 方法
+权重被 `.gitignore` 排除，普通 Git 克隆不会包含约 438 MiB 的最终权重。迁移时需复制 `checkpoints/transformer.pth`，或按下面的下载与微调步骤重新生成；不要只克隆代码便假定模型已存在。
 
-### 4.1 检测、关键点与预处理
+## 3. 来源与作业诚信说明
 
-普通照片首先缩放到最长边不超过 960 像素，使用 YuNet 检测；置信度阈值为 0.8，NMS 阈值为 0.3。用双眼、鼻尖、嘴角五点最小二乘求解无剪切的相似变换，得到 128×128 人脸。评估数据已对齐，直接缩放而不重复检测。
+### 3.1 Transformer 初始化
 
-识别输入统一灰度化，缩放到 128×128，以 `(pixel/255 - 0.5)/0.5` 归一化。灰度可减轻色彩与部分照明差异，但也会损失信息；沿用原网络的单通道设计以保持权重兼容。
+初始化来自作者公开发布的 **`{provenance['repo']}`**，固定版本 `{provenance['revision']}`。作者声明其使用 WebFace4M 数据和 AdaFace 预训练；相关信息属于上游模型来源，不作为本次实验测得的数据。本次未下载 WebFace4M 原始训练集。
 
-### 4.2 轻量表示与可负担微调
+初始化 SHA-256：`{training['initial_checkpoint_sha256']}`。模型代码基于 CVLFace 的 ViT 结构改编，保留层名与权重兼容性，使用原生 PyTorch SDPA 计算注意力，不执行 Hugging Face 远程 Python 代码。代码 MIT 许可证随附于 `third_party/CVLface-LICENSE`；上游模型卡要求遵守训练数据许可，代码许可证不被解释为数据许可。
 
-沿用项目 FaceMobileNet：深度可分离卷积、残差块、512 通道末端卷积、2048 维卷积表示、512 维线性投影与 BatchNorm。不同于把训练身份分类器当作验证器，推理时丢弃分类头，仅使用归一化的特征比较未见身份。
+### 3.2 本次真实微调
 
-当前环境 `torch.cuda.is_available()` 为 False，未使用 GPU。默认冻结所有卷积层及 BN 参数和运行统计，只微调线性投影。缓存每张训练图像及水平翻转图像的卷积表示，避免每轮重复计算。这种缓存与冻结特征的直接前向传播数值等价；测试检查了分解前向传播的一致性。
+本次在本地 CASIA 上训练了 **{a['epochs']} 轮、{training['train_images']:,} 张训练图像**，实际更新最后 {a['train_blocks']} 个 Transformer 块、最终 LayerNorm 和两个特征投影矩阵，冻结其余 Transformer 层及 BatchNorm 参数/统计量。共有 {training['trainable_parameters']:,} 个识别器参数参与优化。最终选中权重相对初始化，{len(training['changed_tensors'])} 个张量中 **{training['changed_floating_values']:,} 个浮点值确实发生变化**，并非直接提交下载的原权重。
 
-分类器以各训练身份的初始平均归一化特征初始化，使用 CosFace 加性余弦间隔损失，尺度 `s=30`，间隔 `m=0.2`。额外加入初始表示保持项：
+最终 SHA-256：`{training['checkpoint_sha256']}`。训练参数、逐轮损失、选中轮次和各张量更新数保存在 `artifacts/transformer_training/training.json`；身份与文件划分保存在 `split.json`。
+
+作业允许微调预训练模型，本报告明确披露预训练和本次微调的各自贡献，不声称网络或预训练由本人从零完成，也不把该已有 ViT 结构称作本次原创算法。此前 MobileNet 代码和结果在 `experiments/mobile_before_transformer/`，原项目旧脚本在 `legacy/`。
+
+## 4. 方法设计与工程探索
+
+### 4.1 检测和对齐
+
+普通照片采用 YuNet 检测器，检测置信度阈值 0.8、NMS 阈值 0.3。五个关键点求解无剪切/无反射的最小二乘相似变换，得到标准人脸后调整至识别输入大小。无脸、多脸、损坏文件均明确报错，不伪造为异人判断。YuNet 只做检测，不输出身份特征；来源和 MIT 许可证在 `assets/`。
+
+LFW 评估使用本地已有裁剪图，不重复检测。两种网络使用同一图片路径和配对标签；原网络按其原设计使用灰度 128×128，ViT 按其预训练约定使用 RGB 112×112，都以 `(pixel/255-0.5)/0.5` 归一化。输入通道、骨干规模和预训练数据量也发生变化，因此比较的是完整方法，不能单独把收益归因于注意力结构。
+
+### 4.2 ViT 表示
+
+输入 RGB 112×112 图像划分为 8×8 patch，共 196 个 token，每个 token 512 维，加入可学习位置编码。网络包含 24 个 Transformer 块，每块 16 头自注意力、两层 LayerNorm 和扩展比为 3 的 ReLU6 MLP。展平最终 token 后，通过两个投影矩阵及 BatchNorm 得到 512 维身份表示；整个网络共有 {training['total_parameters']:,} 个参数。
+
+原生 SDPA 与显式 `softmax(QKᵀ/√d)V` 数学等价，自动测试验证二者一致性。默认微调禁用随机深度和 token mask，固定 BN 统计；冻结前缀在 `no_grad` 下执行，减小反向传播开销。训练时使用 BF16 混合精度，正式评估和接口使用 FP32，不将精度设置差异伪装成结构提升。
+
+### 4.3 原型初始化、间隔损失与保持项
+
+每个训练身份的原图/翻转初始单位特征取均值，作为 CosFace 分类器的初始原型，减少随机分类器对已有特征空间的冲击。分类头仅用于训练，不进入最终验证接口。
+
+训练目标为：
 
 ```text
-L = CrossEntropy(CosFace(f(x), y)) + 10 * (1 - <normalize(f(x)), normalize(f_initial(x))>)
+L = CrossEntropy(CosFace(f(x), y))
+    + 10 × (1 - <normalize(f(x)), normalize(f_initial(x))>)
 ```
 
-保持项约束小样本微调偏移，试图降低遗忘。它是本项目的工程探索，未与无保持项设置做独立消融，不能据此声称该项提高了准确率，也不声称该组合是新的论文级算法。
+CosFace 尺度 s=32、余弦间隔 m=0.15；第二项抑制迁移时的特征漂移。冻结初始化网络的原图与翻转特征先缓存，每批随机选择匹配的保持目标，无需维护第二个 GPU 教师网络。
 
-### 4.3 翻转融合与决策
+本项目的探索在于将新 Transformer、原型初始化、局部块微调、特征保持及可校验阈值整合为可复现实验。这些组成技术均有已有研究基础；没有单独运行无保持项实验，因此不宣称该项具有已证实的独立收益。
 
-分别计算原图和水平翻转图的单位特征，二者相加后再次 L2 归一化。两张人脸的余弦相似度 `s = <e1, e2>`，当且仅当 `s >= threshold` 时输出 1。
+### 4.4 推理与阈值
 
-阈值只在独立校准数据上选择，目标为 balanced accuracy，等价于正负样本等权。排序后分组处理相同分数，同时覆盖全部接受/全部拒绝的边界情况，时间复杂度 O(n log n)，避免原脚本 O(n²) 搜索及在测试集本身选阈值的问题。
+单视图特征 L2 归一化。翻转融合先分别归一化原图与水平翻转图特征，相加后再次归一化。两张人脸的余弦相似度 `s=<e1,e2>`；当 `s>=threshold` 时返回 1，否则返回 0。分数不是概率。
 
-阈值文件绑定模型 SHA-256 和是否翻转融合；更换模型或融合设置时必须重新校准，防止错配。
+阈值仅在 LFW DevTrain 上最大化 balanced accuracy，排序搜索按并列分数组处理，并包含全部接受/拒绝的边界情况。之后冻结阈值，在 DevTest 上统计准确率；不会在 DevTest 标签上搜索最佳阈值或挑选训练轮次。最终阈值为 **{calibration['threshold']:.9f}**。
 
-## 5. 数据与实验设置
+## 5. 数据、设备和训练过程
 
-本地 `CASIA-WebFace-Align-96` 实际包含 10,575 个身份目录和 454,191 张 JPG 图片（本地版本计数，不套用标准数据集规模）。目录名作为身份标签。随机种子为 42，从每个至少有 16 张图像的身份抽取 16 张；512 个身份、8,192 张用于微调，另 128 个身份、2,048 张用于模型选择，二者身份完全分离。划分保存在 `artifacts/training/split.json`。
+本地 CASIA 版本包含 10,575 个身份目录、454,191 张 JPG 图像，身份由目录名给出。随机种子 {a['seed']}，从每个至少 16 张图像的身份抽取 16 张：4,096 个身份、65,536 张用于微调；另 256 个身份、4,096 张用于模型选择，二者身份不重叠。这个“未参与本次微调”的验证集可能与上游大规模预训练存在身份重叠，不能称为对全部训练历史均未见过的身份。
 
-LFW 本地裁剪版本有 5,749 个身份和 13,233 张图片。DevTrain 2,200 对仅用于阈值标定；DevTest 1,000 对仅用于冻结阈值后的评估。本地检查校准/测试图像交集为 {evaluation['image_overlap']}，身份交集为 {evaluation['calibration_test_identity_overlap']}。另依照 `pairs.txt` 的顺序将 6,000 对分成官方十折，每次在其余九折标定阈值后评估留出的一折。
+设备：**{training['hardware']}**，实际使用 `{a['device']}`，PyTorch {training['torch_version']}。GPU 在当前工具沙箱内不可见，但在正常 GPU 执行环境可用；本轮训练实际通过 CUDA 完成，未沿用此前 CPU 训练限制的结论。
 
-默认配置在最终 DevTest 结果计算前固定为“微调权重 + 翻转融合”。模型选择只看 CASIA 验证集，不看 LFW 测试标签。四组消融均报告，未根据 DevTest 重选默认方案。十折结果是补充协议，不是另一个完全独立的数据集；它与开发协议可能共享图片。初始权重的数据历史未知，因此不能据此宣称对完全未见人物的严格独立泛化。
+训练配置：AdamW，最后两个块及 LayerNorm 学习率 {a['lr']}，特征头学习率 {a['head_lr']}，分类器学习率 0.001，weight decay=0.0001；batch size={a['batch_size']}，{a['epochs']} 轮，梯度范数上限 5，CosineAnnealingLR；每张图片以 0.5 概率水平翻转。总耗时 {training['elapsed_seconds']:.2f} 秒，包含初始化特征缓存、训练、验证和参数差异检查；GPU/缓存/磁盘状态会影响复现耗时。身份划分固定，GPU 数值与软件差异可能引起小幅波动。
 
-微调参数：16 轮，batch size=128，AdamW，投影层初始学习率 0.00005，分类头学习率 0.001，weight decay=0.0005，CosineAnnealingLR，梯度范数上限 5；每批图像独立随机翻转。冻结模式保持 BN 为 eval。训练版本 PyTorch {training['torch_version']}、NumPy {training['numpy_version']}，CPU 线程数 8。
+平均训练损失从 {history[0]['loss']:.6f} 降到 {history[-1]['loss']:.6f}。独立 CASIA 验证初始 AUC={training['initial_validation_auc']:.6f}，选中轮次 AUC={training['best_validation_auc']:.6f}；balanced accuracy 从 {training['initial_validation_balanced_accuracy']:.2%} 到选中轮次 {training['best_validation_balanced_accuracy']:.2%}。模型选择规则预先设为验证 AUC 最大、并列时 balanced accuracy 最大，第 {training['best_epoch']} 轮入选。仅在这些固定训练结束后评估 LFW，没有根据 LFW 反复挑训练配置。
 
-训练耗时 {training['elapsed_seconds']:.1f} 秒（含首次卷积缓存）；平均训练损失从 {history[0]['loss']:.4f} 降至 {history[-1]['loss']:.4f}。CASIA 验证 balanced accuracy 从 {training['initial_validation_balanced_accuracy']:.2%} 变为最佳 {training['best_validation_balanced_accuracy']:.2%}，第 {training['best_epoch']} 轮入选。该值用于选择模型，不能当作独立测试成绩。
+![实际训练与验证曲线](artifacts/training.png)
 
-![训练及模型选择曲线](artifacts/training.png)
+## 6. 同协议评估与消融
 
-原有 `datasets/data/` 中无身份标签的图像、`test_lst.csv` 无标签配对和 `feature_dict*.pkl` 未参与训练、阈值标定或准确率报告，避免把未知数据当训练数据。
+LFW 本地裁剪版本有 5,749 个身份、13,233 张图像。开发协议使用 DevTrain 2,200 对标定阈值，DevTest 1,000 对评估（同人/异人各 500 对）；检查图像交集={evaluation['image_overlap']}、身份交集={evaluation['calibration_test_identity_overlap']}。另按本地官方 `pairs.txt` 顺序保留十折，每折 600 对，在其余 5,400 对上标定阈值，评估留出的一折。所有模型使用同一协议、图片和判定方向。
 
-## 6. 实测结果与消融
+最终方案在测试前固定为“微调 ViT + 翻转融合”，`finetuned_*` 在本轮 JSON 中指新 ViT；此前卷积微调方案另标为 `mobile_finetuned_*`。以下全部为本地测量，未抄用作者公布的准确率。
 
 | 设置 | DevTrain 阈值 | DevTest 准确率 | AUC | FAR | FRR | 标准十折准确率（均值 ± 折间标准差） |
 |---|---:|---:|---:|---:|---:|---:|
 {table}
 
-交付模型 DevTest 混淆矩阵：TP={final['tp']}，FN={final['fn']}，FP={final['fp']}，TN={final['tn']}。同人接受率 TAR={final['tar']:.2%}，异人误接受率 FAR={final['far']:.2%}，同人误拒绝率 FRR={final['frr']:.2%}。EER={final['eer']:.2%} 为 ROC 线性插值的描述性指标，未用它替换交付阈值。十折标准差反映折间波动，不是置信区间。
+交付模型 DevTest：TP={final['tp']}，FN={final['fn']}，FP={final['fp']}，TN={final['tn']}；TAR={final['tar']:.2%}，FAR={final['far']:.2%}，FRR={final['frr']:.2%}。FAR=0 仅表示这 500 对异人中未出现误接受，不代表真实误接受概率为零。EER={final['eer']:.2%} 是改变阈值时 ROC 交点插值的描述性指标，不能与冻结阈值处的 FAR/FRR 混为一谈。十折标准差不是置信区间。
 
-同样采用翻转融合时，本次微调相对原权重的 DevTest 准确率变化为 {delta_head:+.2f} 个百分点；微调模型使用翻转融合相对单视图变化为 {delta_flip:+.2f} 个百分点。该小规模实验不证明普遍优势，正负变化均如实保留。一个百分点在 1,000 对中只有 10 对，需更大数据和多个随机种子才能判断稳定性。
+### 6.1 与原网络比较
 
-![ROC 与同人/异人相似度分布](artifacts/evaluation.png)
+DevTest 改善 {accuracy_gain:.2f} 个百分点。逐对对照原网络单视图结果，{paired['gained_correct_pairs']} 对从错误变为正确，{paired['lost_correct_pairs']} 对从正确变为错误；配对 McNemar 双侧精确检验 p={paired['mcnemar_exact_two_sided_p']:.8g}。这是同一固定公开测试样本上的描述性比较，不能替代外部数据验证。标准十折错误由 {cv_old_errors} 对降至 {cv_new_errors} 对。
 
-最终阈值为 `{calibration['threshold']:.9f}`，逐对预测在 `artifacts/predictions.csv`，各折指标在 `artifacts/evaluation.json`。相似度分布重叠处会产生误接受和误拒绝，默认目标为等权准确率，并未针对低误接受应用优化。
+### 6.2 预训练和本次微调的贡献
 
-下图按协议顺序各展示最多三例误拒绝与误接受，标签来自开发测试协议，不做人工重标。误拒绝会把同人的姿态、表情或裁剪差异当成身份差异；误接受说明外观相似时单一余弦分数仍可能混淆。这里只是错误案例观察，不是对误差原因的受控实验。
+{fine_tuning_analysis}
 
-![DevTest 错误样例](artifacts/error_examples.jpg)
+相较原网络，ViT 参数更多，且额外使用了上游 WebFace4M 预训练；作业允许额外数据与微调，但这个结果不能解释为相同训练资源下 Transformer 必然优于 CNN。公开 LFW 也可能与预训练身份重叠，本次未核验上游原始训练清单，不能声明严格排除了所有历史身份重叠。
 
-## 7. 系统验证与复现
+![ROC 与分数分布](artifacts/evaluation.png)
+
+逐对预测位于 `artifacts/predictions.csv`，各折指标、模型 SHA-256、配对统计位于 `evaluation.json`。下图按协议顺序展示最多三例误拒绝和三例误接受；本次没有误接受时只展示误拒绝，没有人为重标或删除困难样本。
+
+![错误案例](artifacts/error_examples.jpg)
+
+## 7. 复现实验与系统验证
+
+从新环境开始：
 
 ```bash
-python train.py
-python evaluate.py
-python scripts/validate_system.py
-python scripts/build_report.py
 python -m pip install -r requirements-dev.txt
+python scripts/download_transformer.py
+python train.py --device cuda:7
+python evaluate.py --device cuda:7
+python scripts/validate_system.py --device cuda:7
+python scripts/build_report.py
 python -m pytest -q
 ```
 
-使用 `python train.py --help` 查看身份数量、图像数、学习率及数据路径等配置；`--full` 可微调全部网络，`--scratch --full` 可随机初始化训练。它们是可用扩展入口，本报告没有把未执行的全量训练当成已完成实验。
+将 `cuda:7` 换成实际可用显卡；单卡环境使用 `cuda` 或 `cuda:0`。`train.py --help` 可配置身份数、学习率、训练块数和工作目录。默认运行即训练新 Transformer；旧卷积训练入口保留为 `train_mobile.py`，不会作为新默认方案。初始化下载脚本固定上游版本并校验 SHA-256。
 
-自动测试覆盖：阈值并列和边界、混淆矩阵/ROC、官方及路径配对格式、头部缓存前向等价性、同图一致性与交换对称性、模型/阈值校验、无脸/多脸拒绝、真实单脸检测、图片上传及损坏图片处理，以及规定接口的返回类型。摄像头实际采集取决于运行电脑的硬件与浏览器授权；当前无可交互摄像头，未声称实测真人实时采集。
-{extra}
-## 8. 局限与后续探索
+原始 `18.pth` 是比较基准，须保留用于 `evaluate.py`；其历史训练来源无法从文件确认。本地无标签 `datasets/data/`、`test_lst.csv`、旧 `feature_dict*.pkl` 未用于训练或计算准确率。公开评估集不参与梯度更新。
 
-1. 基础权重来源与历史训练划分不可追溯；报告明确区分项目已有工作和本次微调，若需要完全可审计的从零训练，应运行随机初始化的全网络训练并保存数据清单。
-2. 只微调 512 个身份的投影层，不能替代在完整 CASIA 上训练卷积网络。CASIA 验证表现不保证跨数据集性能；保持项的独立价值仍需消融。
-3. LFW 是公开数据且图像经过裁剪，本地评估不是教师未公开测试的替代品。不同检测裁剪、姿态、模糊、遮挡、光照可能导致分布偏移；普通照片检测后的最终误差没有单独的标注评估集。
-4. 灰度轻量网络与两视图融合存在速度/准确率取舍；未来可在固定身份划分下比较 RGB、更强骨干、ArcFace，以及更多随机种子。
-5. 系统只验证照片相似性，没有活体检测，也不把它当作防照片攻击的身份认证系统。涉及高安全阈值时，应在对应人群与设备上按目标 FAR 重新校准。
+自动测试覆盖阈值并列/边界、配对协议、指标、接口类型、图片错误、人脸检测、网页 API、RGB 预处理、SDPA 数学一致性，以及 Transformer 冻结前缀无梯度/末端块有梯度/BN 统计不变。完整测试已执行；测试记录见 `artifacts/test_validation.json`。真实摄像头硬件未测试。
+{system}
+## 8. 局限和可继续研究的方向
+
+1. 强预训练是主要收益来源，不能将本次微调包装成全部改进来源。预训练数据和身份历史未完整审计。
+2. 本次只微调末端两个块与投影，冻结前缀；没有把未执行的全网络从零训练作为实验成绩。
+3. 1,000 对开发测试与 6,000 对标准十折属于不同协议，可能共享图片，不是两份完全独立的外部验证。教师未公开测试尚未评估。
+4. 评估为已有裁剪图；普通照片经过检测和对齐会有分布变化，侧脸、遮挡、模糊和年龄变化仍可能失败。新网络体积/CPU 成本也高于旧模型。
+5. 方法没有活体检测，不能仅凭照片相似性抵御照片重放。更低 FAR 的应用需要在目标设备和人群上另行校准。
+6. 后续可固定训练数据和预算，比较不同 ViT/CNN、训练块数、无保持项设置及多个随机种子；这些是待做实验，不是本报告已有结论。
 
 ## 9. 参考资料与致谢
 
-- 原项目 `README.md` 与 `blog/` 中的网络、训练、度量教程及其上游致谢。
-- Wang et al., [CosFace: Large Margin Cosine Loss for Deep Face Recognition, CVPR 2018](https://openaccess.thecvf.com/content_cvpr_2018/html/Wang_CosFace_Large_Margin_CVPR_2018_paper.html)。本项目使用的加性余弦间隔目标来自该工作，并非本次提出。
-- Wu, Peng, Yu, [YuNet 官方实现和模型说明](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)。采用其中 2023mar 检测权重及 MIT 许可证。
-- [scikit-learn LFW 数据加载与协议源码](https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/datasets/_lfw.py)，用于核对开发训练、开发测试及十折协议；计算实际使用本地 `pairs*.txt`。
+- [CVLface 官方仓库](https://github.com/mk-minchul/CVLface)及[固定版本 ViT 模型](https://huggingface.co/minchul/cvlface_adaface_vit_base_webface4m/tree/{provenance['revision']})，代码许可与权重来源见 `third_party/`。
+- Dosovitskiy et al., [An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale](https://arxiv.org/abs/2010.11929)。
+- Kim et al., [AdaFace: Quality Adaptive Margin for Face Recognition](https://arxiv.org/abs/2204.00964)，为上游初始化的训练方法；本地微调目标使用 CosFace。
+- Wang et al., [CosFace: Large Margin Cosine Loss for Deep Face Recognition](https://openaccess.thecvf.com/content_cvpr_2018/html/Wang_CosFace_Large_Margin_CVPR_2018_paper.html)。
+- [YuNet 官方模型与许可证](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)。
+- 原项目 `legacy/README.md`、`blog/` 及其对 insightface、InsightFace_Pytorch、arcface-pytorch 的致谢。
 '''
     (ROOT/'report.md').write_text(report,encoding='utf-8')
-    print('Saved report.md and artifacts/training.png')
+    print('Updated report.md and artifacts/training.png from verified Transformer records.')
 
 
-if __name__ == '__main__':
-    main()
+if __name__=='__main__':main()

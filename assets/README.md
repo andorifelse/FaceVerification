@@ -7,4 +7,4 @@
 - Downloaded during this implementation; distributed with its upstream MIT license (see `LICENSE-YuNet`).
 - Input: BGR image. Output: bounding box, five facial landmarks, confidence.
 
-The recognition backbone comes from the supplied project, `checkpoints/18.pth`, and is actually fine-tuned by `train.py`; see `report.md` and `artifacts/training/training.json`.
+The current recognition backbone is a locally fine-tuned CVLFace ViT; initialization provenance and code license are recorded in `third_party/`, and local refinement records are in `artifacts/refinement/`. The supplied project's `checkpoints/18.pth` is retained only as a comparison baseline. See `report.md` for details.

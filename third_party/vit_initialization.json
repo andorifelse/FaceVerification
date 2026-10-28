@@ -1,0 +1,10 @@
+{
+  "repo": "minchul/cvlface_adaface_vit_base_webface4m",
+  "revision": "c6fed2ff09ac0a29cccc72c09127ad7b4bd3fa9e",
+  "filename": "model.safetensors",
+  "sha256": "5fafd6b7d599a3ede5fac5bd1d01ad05e9e93e89b39b7687d4a3bc93ff2aebc0",
+  "bytes": 459516232,
+  "pretraining_data": "WebFace4M",
+  "code_license": "MIT; third_party/CVLface-LICENSE",
+  "weights_terms": "Upstream model card requests compliance with training dataset license."
+}

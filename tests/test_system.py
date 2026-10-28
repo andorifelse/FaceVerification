@@ -123,3 +123,70 @@ def test_required_entry_point():
     from FaceVerification import FaceVerification
     value = FaceVerification(str(ROOT/'samples/009.jpg'),str(ROOT/'samples/009.jpg'))
     assert type(value) is int and value == 1
+
+
+def test_transformer_attention_matches_explicit_attention():
+    from model.face_vit import Attention
+    attention=Attention(32,4).eval()
+    x=torch.randn(2,7,32)
+    q,k,v=attention.qkv(x).reshape(2,7,3,4,8).permute(2,0,3,1,4).unbind(0)
+    expected=((q@k.transpose(-2,-1))/(8**.5)).softmax(-1)@v
+    expected=attention.proj(expected.transpose(1,2).reshape(2,7,32))
+    assert torch.allclose(attention(x),expected,atol=1e-6)
+
+
+def test_transformer_rgb_preprocessing():
+    from verification import make_transform
+    transform=make_transform({'backbone':'face_vit'})
+    image=Image.new('RGB',(96,112),(255,0,0))
+    tensor=transform(image)
+    assert tensor.shape==(3,112,112)
+    assert tensor[0].mean()==1 and tensor[1].mean()==-1 and tensor[2].mean()==-1
+
+
+def test_transformer_freezing_and_gradients():
+    from model.face_vit import FaceViT
+    # Small architecture exercises the same code path without loading large weights.
+    net=FaceViT(embedding_size=8,dim=16,depth=3,heads=4,ratio=2,image_size=16,patch_size=8)
+    net.set_trainable_blocks(1);net.train()
+    before=net.feature[1].running_mean.clone()
+    net(torch.randn(2,3,16,16)).square().mean().backward()
+    assert not net.patch_embed.proj.weight.requires_grad and net.patch_embed.proj.weight.grad is None
+    assert net.blocks[0].attn.qkv.weight.grad is None
+    assert net.blocks[-1].attn.qkv.weight.grad.abs().sum()>0
+    assert net.feature[0].weight.grad.abs().sum()>0
+    assert torch.equal(net.feature[1].running_mean,before)
+
+
+def test_default_transformer_checkpoint_and_api():
+    from config import config
+    if not (config.checkpoints/config.test_model).exists():
+        pytest.skip('Transformer training has not completed')
+    verifier=FaceVerifier(device='cpu')
+    assert verifier.metadata['backbone']=='face_vit'
+    result=verifier.compare(ROOT/'samples/009.jpg',ROOT/'samples/009.jpg',detect=True)
+    assert result['same_person']==1 and result['similarity']==pytest.approx(1,abs=1e-5)
+    from app import create_app
+    client=create_app(verifier=verifier).test_client()
+    response=client.post('/api/verify',data={
+        'image1':(io.BytesIO((ROOT/'samples/009.jpg').read_bytes()),'a.jpg'),
+        'image2':(io.BytesIO((ROOT/'samples/009.jpg').read_bytes()),'b.jpg')})
+    assert response.status_code==200 and response.json['same_person']==1
+
+
+def test_diagnostic_degradation_is_deterministic():
+    from refinement import diagnostic_image
+    rng=np.random.default_rng(123)
+    original=Image.fromarray(rng.integers(0,256,(112,112,3),dtype=np.uint8))
+    first=np.array(diagnostic_image(original));second=np.array(diagnostic_image(original))
+    assert first.shape==(112,112,3) and np.array_equal(first,second)
+    assert not np.array_equal(first,np.array(original))
+
+
+def test_identity_metric_projection_preserves_vit_output():
+    from model.face_vit import FaceViT
+    net=FaceViT(embedding_size=8,dim=16,depth=2,heads=4,ratio=2,image_size=16,patch_size=8).eval()
+    metric=FaceViT(embedding_size=8,dim=16,depth=2,heads=4,ratio=2,image_size=16,patch_size=8,metric_projection=True).eval()
+    state=metric.state_dict();state.update(net.state_dict());metric.load_state_dict(state)
+    x=torch.randn(2,3,16,16)
+    assert torch.allclose(net(x),metric(x),atol=1e-6)

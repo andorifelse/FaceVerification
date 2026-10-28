@@ -1,0 +1,11 @@
+{
+  "threshold": 0.2779906392097473,
+  "tta": true,
+  "checkpoint_sha256": "a76bb8aff4560e132121298a8165729f4ef504df600e6a3e4921951a4ab22049",
+  "calibration_protocol": "/home/wzc/datasets/casia/faceRecognitionCASIA/datasets/scikit_learn_data/lfw_home/pairsDevTrain.txt",
+  "calibration_protocol_sha256": "1d454dada7dfeca0e7eab6f65dc4e97a6312d44cf142207be28d688be92aabfa",
+  "calibration_pairs": 2200,
+  "decision": "cosine_similarity >= threshold",
+  "backbone": "face_vit",
+  "preprocessing": "RGB, resize 112x112, (pixel/255-0.5)/0.5"
+}

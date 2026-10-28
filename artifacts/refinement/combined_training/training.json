@@ -1,0 +1,114 @@
+{
+  "method": "quality-filtered shrinkage within-class covariance projection",
+  "selection": "maximum clean CASIA validation AUC, then balanced accuracy; identity transform included",
+  "gradient_updates": false,
+  "fitted_values": 262144,
+  "train_identities": 4096,
+  "train_images": 65536,
+  "kept_images": 63413,
+  "validation_identities": 256,
+  "baseline_validation": {
+    "auc": 0.9723396301269531,
+    "balanced_accuracy": 0.96240234375,
+    "threshold": 0.19974598288536072
+  },
+  "selected": {
+    "shrinkage": 0.05,
+    "strength": 1.0,
+    "auc": 0.9746264219284058,
+    "balanced_accuracy": 0.9609375,
+    "threshold": 0.18986766040325165
+  },
+  "candidates": [
+    {
+      "shrinkage": 0.05,
+      "strength": 0.25,
+      "auc": 0.9729220271110535,
+      "balanced_accuracy": 0.962890625,
+      "threshold": 0.18333466351032257
+    },
+    {
+      "shrinkage": 0.05,
+      "strength": 0.5,
+      "auc": 0.9735221266746521,
+      "balanced_accuracy": 0.96240234375,
+      "threshold": 0.18828487396240234
+    },
+    {
+      "shrinkage": 0.05,
+      "strength": 0.75,
+      "auc": 0.9740974307060242,
+      "balanced_accuracy": 0.9620361328125,
+      "threshold": 0.18899989128112793
+    },
+    {
+      "shrinkage": 0.05,
+      "strength": 1.0,
+      "auc": 0.9746264219284058,
+      "balanced_accuracy": 0.9609375,
+      "threshold": 0.18986766040325165
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 0.25,
+      "auc": 0.9728600382804871,
+      "balanced_accuracy": 0.9627685546875,
+      "threshold": 0.1828937530517578
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 0.5,
+      "auc": 0.9733849167823792,
+      "balanced_accuracy": 0.9625244140625,
+      "threshold": 0.1882852017879486
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 0.75,
+      "auc": 0.9738816320896149,
+      "balanced_accuracy": 0.9620361328125,
+      "threshold": 0.18416276574134827
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 1.0,
+      "auc": 0.9743443727493286,
+      "balanced_accuracy": 0.9617919921875,
+      "threshold": 0.194305419921875
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 0.25,
+      "auc": 0.972732663154602,
+      "balanced_accuracy": 0.9627685546875,
+      "threshold": 0.18075722455978394
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 0.5,
+      "auc": 0.9731103181838989,
+      "balanced_accuracy": 0.962890625,
+      "threshold": 0.1855114847421646
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 0.75,
+      "auc": 0.973487138748169,
+      "balanced_accuracy": 0.962646484375,
+      "threshold": 0.18857763707637787
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 1.0,
+      "auc": 0.9738382995128632,
+      "balanced_accuracy": 0.9622802734375,
+      "threshold": 0.19640323519706726
+    }
+  ],
+  "checkpoint_sha256": "216fe45a7f4d90e3bb11172ba310c0d3c31bd87e0e8805bb7a87a426711f7ad2",
+  "initial_checkpoint_sha256": "79b790e5f8f7b4dccbaf35dd15dbf68ea90e09e260bc182a42eabd8602d7681e",
+  "cache": "artifacts/refinement/robust_casia.npz",
+  "cache_sha256": "d1c4c1f5162c372c35de58ccd5c9eb1e29b992ee92afb8d5aac85c9f5bc619a0",
+  "split_sha256": "a041f0fc989b00aafe0aac9f4cccb8dd285334d6ab033490f5af2e62eab41859",
+  "elapsed_seconds": 93.25619748001918
+}

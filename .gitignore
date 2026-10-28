@@ -36,6 +36,8 @@ lfw_test_pair.txt
 *.pkl
 *.pickle
 *.joblib
+/checkpoints/pretrained_vit/
+*.part
 
 # 忽略可重新生成的大型缓存；保留报告图片、指标、阈值与数据划分
 /artifacts/**/*.npz

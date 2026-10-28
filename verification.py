@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageOps
 import torch
 import torch.nn.functional as F
+import torchvision.transforms as T
 
 from config import config
 from model import FaceMobileNet, ResIRSE
@@ -24,15 +25,38 @@ def sha256(path):
 
 
 def load_backbone(checkpoint, device='cpu'):
-    payload = torch.load(checkpoint, map_location='cpu', weights_only=True)
+    if Path(checkpoint).suffix == '.safetensors':
+        from safetensors.torch import load_file
+        payload = {'backbone':load_file(str(checkpoint)),
+                   'model_config':{'backbone':'face_vit','embedding_size':512,'input_size':112,'color_space':'RGB'}}
+    else:
+        payload = torch.load(checkpoint, map_location='cpu', weights_only=True)
     metadata = payload.get('model_config', {})
     state = payload.get('backbone', payload)
     state = {key.removeprefix('module.'): value for key, value in state.items()}
     size = metadata.get('embedding_size', state.get('linear.weight', torch.empty(512, 0)).shape[0])
     name = metadata.get('backbone', 'fmobile')
-    net = ResIRSE(size, 0.5) if name == 'resnet' else FaceMobileNet(size)
+    if name == 'face_vit':
+        from model.face_vit import FaceViT
+        net = FaceViT(size,metric_projection=metadata.get('metric_projection',False))
+        for prefix in ['model.net.','net.']:
+            if all(k.startswith(prefix) for k in state):
+                state = {k[len(prefix):]:v for k,v in state.items()}
+                break
+    elif name == 'resnet':
+        net = ResIRSE(size,0.5)
+    elif name == 'fmobile':
+        net = FaceMobileNet(size)
+    else:
+        raise ValueError(f'Unsupported backbone: {name}')
     net.load_state_dict(state, strict=True)
     return net.to(device).eval(), metadata
+
+
+def make_transform(metadata):
+    if metadata.get('backbone') == 'face_vit':
+        return T.Compose([T.Resize((112,112)),T.ToTensor(),T.Normalize([.5]*3,[.5]*3)])
+    return config.test_transform
 
 
 def open_image(value):
@@ -45,11 +69,13 @@ def open_image(value):
 class FaceVerifier:
     def __init__(self, checkpoint=None, calibration=None, device=None, threshold=None, tta=None):
         self.device = device or config.device
-        if self.device == 'cpu':
-            torch.set_num_threads(min(8, os.cpu_count() or 1))
+        # Small 112px preprocessing tensors otherwise oversubscribe large CPU
+        # hosts, even when the network itself runs on a GPU.
+        torch.set_num_threads(min(8, os.cpu_count() or 1))
         self.checkpoint = Path(checkpoint or config.checkpoints / config.test_model).resolve()
         self.model_hash = sha256(self.checkpoint)
         self.net, self.metadata = load_backbone(self.checkpoint, self.device)
+        self.transform = make_transform(self.metadata)
         calibration_path = Path(calibration or config.calibration)
         settings = {}
         if calibration_path.exists():
@@ -73,7 +99,7 @@ class FaceVerifier:
             raise ValueError('batch_size 必须为正数。')
         output = []
         for start in range(0, len(images), batch_size):
-            batch = torch.stack([config.test_transform(open_image(p)) for p in images[start:start+batch_size]])
+            batch = torch.stack([self.transform(open_image(p)) for p in images[start:start+batch_size]])
             batch = batch.to(self.device)
             feature = F.normalize(self.net(batch), dim=1)
             if self.tta:
@@ -103,7 +129,7 @@ class FaceVerifier:
 @lru_cache(maxsize=1)
 def get_verifier():
     return FaceVerifier(checkpoint=os.environ.get('FACE_CHECKPOINT'),
-                        calibration=os.environ.get('FACE_CALIBRATION'))
+                        calibration=os.environ.get('FACE_CALIBRATION'),device=os.environ.get('FACE_DEVICE'))
 
 
 def FaceVerification(X1, X2):

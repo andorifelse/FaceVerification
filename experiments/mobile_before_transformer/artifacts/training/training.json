@@ -1,0 +1,113 @@
+{
+  "arguments": {
+    "data_root": "/home/wzc/datasets/casia/faceRecognitionCASIA/datasets/CASIA-WebFace-Align-96",
+    "init": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/18.pth",
+    "output": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/finetuned.pth",
+    "train_ids": 512,
+    "validation_ids": 128,
+    "per_id": 16,
+    "epochs": 16,
+    "batch_size": 128,
+    "lr": 5e-05,
+    "anchor_weight": 10.0,
+    "seed": 42,
+    "threads": 8,
+    "device": "cuda",
+    "scratch": false,
+    "full": false,
+    "work_dir": "/home/wzc/datasets/casia/faceRecognitionCASIA/artifacts/training"
+  },
+  "initial_validation_balanced_accuracy": 0.926513671875,
+  "best_epoch": 8,
+  "best_validation_balanced_accuracy": 0.92919921875,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 1.3077035024762154,
+      "validation_balanced_accuracy": 0.92724609375
+    },
+    {
+      "epoch": 2,
+      "loss": 0.9614673359319568,
+      "validation_balanced_accuracy": 0.928466796875
+    },
+    {
+      "epoch": 3,
+      "loss": 0.8152779946103692,
+      "validation_balanced_accuracy": 0.92724609375
+    },
+    {
+      "epoch": 4,
+      "loss": 0.7213825434446335,
+      "validation_balanced_accuracy": 0.927978515625
+    },
+    {
+      "epoch": 5,
+      "loss": 0.6596046071499586,
+      "validation_balanced_accuracy": 0.9287109375
+    },
+    {
+      "epoch": 6,
+      "loss": 0.6162715102545917,
+      "validation_balanced_accuracy": 0.9287109375
+    },
+    {
+      "epoch": 7,
+      "loss": 0.5874713617376983,
+      "validation_balanced_accuracy": 0.928466796875
+    },
+    {
+      "epoch": 8,
+      "loss": 0.5502944905310869,
+      "validation_balanced_accuracy": 0.92919921875
+    },
+    {
+      "epoch": 9,
+      "loss": 0.5308193196542561,
+      "validation_balanced_accuracy": 0.92919921875
+    },
+    {
+      "epoch": 10,
+      "loss": 0.5143725755624473,
+      "validation_balanced_accuracy": 0.928955078125
+    },
+    {
+      "epoch": 11,
+      "loss": 0.4949026331305504,
+      "validation_balanced_accuracy": 0.928955078125
+    },
+    {
+      "epoch": 12,
+      "loss": 0.48710415698587894,
+      "validation_balanced_accuracy": 0.9287109375
+    },
+    {
+      "epoch": 13,
+      "loss": 0.4771849922835827,
+      "validation_balanced_accuracy": 0.9287109375
+    },
+    {
+      "epoch": 14,
+      "loss": 0.466831823810935,
+      "validation_balanced_accuracy": 0.9287109375
+    },
+    {
+      "epoch": 15,
+      "loss": 0.4649688198696822,
+      "validation_balanced_accuracy": 0.9287109375
+    },
+    {
+      "epoch": 16,
+      "loss": 0.4595247101970017,
+      "validation_balanced_accuracy": 0.9287109375
+    }
+  ],
+  "changed_floating_values": 1048576,
+  "checkpoint_sha256": "d7991537bf2a111267acbfb2f54b13efe610e1fb6a07bf92e8f7179d0c53c1eb",
+  "initial_checkpoint_sha256": "027bf59d0af6357ff7dcb13bc7fea6f3223fa023f20ebfbc1deac4ede32e632c",
+  "elapsed_seconds": 7.9743589400313795,
+  "train_images": 8192,
+  "validation_images": 2048,
+  "torch_version": "2.9.1+cu128",
+  "numpy_version": "2.4.6"
+}

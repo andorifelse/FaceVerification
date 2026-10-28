@@ -1,0 +1,70 @@
+{
+  "selection": "maximum mean of clean/diagnostic CASIA AUC, requiring clean AUC >= initialization -.001",
+  "selected": "combined",
+  "candidates": {
+    "pretrained": {
+      "checkpoint": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/pretrained_vit/model.safetensors",
+      "checkpoint_sha256": "5fafd6b7d599a3ede5fac5bd1d01ad05e9e93e89b39b7687d4a3bc93ff2aebc0",
+      "clean": {
+        "auc": 0.9723178744316101,
+        "balanced_accuracy": 0.9617919921875,
+        "threshold": 0.18623225390911102
+      },
+      "diagnostic": {
+        "auc": 0.9627773761749268,
+        "balanced_accuracy": 0.929443359375,
+        "threshold": 0.1570194512605667
+      },
+      "selection_score": 0.9675476253032684
+    },
+    "metric": {
+      "checkpoint": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/transformer_metric.pth",
+      "checkpoint_sha256": "34872e110e29f554ee44414af81e3f28b367b773cb6ea4bd5a4f2cd519dded76",
+      "clean": {
+        "auc": 0.9746131896972656,
+        "balanced_accuracy": 0.960693359375,
+        "threshold": 0.19955767691135406
+      },
+      "diagnostic": {
+        "auc": 0.964648962020874,
+        "balanced_accuracy": 0.9295654296875,
+        "threshold": 0.15194730460643768
+      },
+      "selection_score": 0.9696310758590698
+    },
+    "robust": {
+      "checkpoint": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/transformer_robust.pth",
+      "checkpoint_sha256": "79b790e5f8f7b4dccbaf35dd15dbf68ea90e09e260bc182a42eabd8602d7681e",
+      "clean": {
+        "auc": 0.9723396301269531,
+        "balanced_accuracy": 0.96240234375,
+        "threshold": 0.19974590837955475
+      },
+      "diagnostic": {
+        "auc": 0.9641819596290588,
+        "balanced_accuracy": 0.931396484375,
+        "threshold": 0.16132831573486328
+      },
+      "selection_score": 0.968260794878006
+    },
+    "combined": {
+      "checkpoint": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/transformer_combined.pth",
+      "checkpoint_sha256": "216fe45a7f4d90e3bb11172ba310c0d3c31bd87e0e8805bb7a87a426711f7ad2",
+      "clean": {
+        "auc": 0.9746264219284058,
+        "balanced_accuracy": 0.9609375,
+        "threshold": 0.18986764550209045
+      },
+      "diagnostic": {
+        "auc": 0.9660793542861938,
+        "balanced_accuracy": 0.9315185546875,
+        "threshold": 0.15304596722126007
+      },
+      "selection_score": 0.9703528881072998
+    }
+  },
+  "test_labels_used": false,
+  "diagnostic": "Every image resized to 40x40, JPEG quality 45, then restored to 112x112",
+  "validation_split_sha256": "a041f0fc989b00aafe0aac9f4cccb8dd285334d6ab033490f5af2e62eab41859",
+  "activated_checkpoint": "/home/wzc/datasets/casia/faceRecognitionCASIA/checkpoints/transformer.pth"
+}

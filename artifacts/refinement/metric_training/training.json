@@ -1,0 +1,111 @@
+{
+  "method": "quality-filtered shrinkage within-class covariance projection",
+  "selection": "maximum clean CASIA validation AUC, then balanced accuracy; identity transform included",
+  "gradient_updates": false,
+  "fitted_values": 262144,
+  "train_identities": 4096,
+  "train_images": 65536,
+  "kept_images": 63360,
+  "validation_identities": 256,
+  "baseline_validation": {
+    "auc": 0.9723201990127563,
+    "balanced_accuracy": 0.9617919921875,
+    "threshold": 0.18645069003105164
+  },
+  "selected": {
+    "shrinkage": 0.05,
+    "strength": 1.0,
+    "auc": 0.9746113419532776,
+    "balanced_accuracy": 0.9608154296875,
+    "threshold": 0.20053774118423462
+  },
+  "candidates": [
+    {
+      "shrinkage": 0.05,
+      "strength": 0.25,
+      "auc": 0.9729043841362,
+      "balanced_accuracy": 0.9617919921875,
+      "threshold": 0.188808411359787
+    },
+    {
+      "shrinkage": 0.05,
+      "strength": 0.5,
+      "auc": 0.9735110402107239,
+      "balanced_accuracy": 0.9619140625,
+      "threshold": 0.18758827447891235
+    },
+    {
+      "shrinkage": 0.05,
+      "strength": 0.75,
+      "auc": 0.9740917682647705,
+      "balanced_accuracy": 0.961669921875,
+      "threshold": 0.18758098781108856
+    },
+    {
+      "shrinkage": 0.05,
+      "strength": 1.0,
+      "auc": 0.9746113419532776,
+      "balanced_accuracy": 0.9608154296875,
+      "threshold": 0.20053774118423462
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 0.25,
+      "auc": 0.9728416204452515,
+      "balanced_accuracy": 0.9620361328125,
+      "threshold": 0.18860268592834473
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 0.5,
+      "auc": 0.9733705222606659,
+      "balanced_accuracy": 0.9617919921875,
+      "threshold": 0.19087307155132294
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 0.75,
+      "auc": 0.9738806486129761,
+      "balanced_accuracy": 0.9619140625,
+      "threshold": 0.18383222818374634
+    },
+    {
+      "shrinkage": 0.2,
+      "strength": 1.0,
+      "auc": 0.9743271470069885,
+      "balanced_accuracy": 0.961181640625,
+      "threshold": 0.1928691267967224
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 0.25,
+      "auc": 0.972700297832489,
+      "balanced_accuracy": 0.9619140625,
+      "threshold": 0.18779543042182922
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 0.5,
+      "auc": 0.9730944633483887,
+      "balanced_accuracy": 0.9620361328125,
+      "threshold": 0.18411609530448914
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 0.75,
+      "auc": 0.9734784364700317,
+      "balanced_accuracy": 0.9617919921875,
+      "threshold": 0.1857171654701233
+    },
+    {
+      "shrinkage": 0.5,
+      "strength": 1.0,
+      "auc": 0.9738234877586365,
+      "balanced_accuracy": 0.9619140625,
+      "threshold": 0.18490076065063477
+    }
+  ],
+  "checkpoint_sha256": "34872e110e29f554ee44414af81e3f28b367b773cb6ea4bd5a4f2cd519dded76",
+  "initial_checkpoint_sha256": "5fafd6b7d599a3ede5fac5bd1d01ad05e9e93e89b39b7687d4a3bc93ff2aebc0",
+  "elapsed_seconds": 6.878794890944846
+}

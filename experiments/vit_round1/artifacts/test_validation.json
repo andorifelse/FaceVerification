@@ -1,0 +1,10 @@
+{
+  "command": "python -m pytest -q",
+  "passed": 14,
+  "failed": 0,
+  "skipped": 0,
+  "elapsed_seconds": 5.88,
+  "backbone": "face_vit",
+  "checkpoint_sha256": "f20f7d2ce5ee0b09fd60590c68d65a4a2647d624f7a8b24426a47053620f3190",
+  "recorded_at": "2026-10-28T03:36:54.178993+00:00"
+}
