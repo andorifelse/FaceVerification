@@ -2,7 +2,7 @@
 
 ## 1. 任务与结果
 
-本项目判断两张人脸照片是否属于同一个人，提供 `Y = FaceVerification(X1, X2)` 接口：输入两张图片的路径，同人返回 1，异人返回 0。
+本实验判断两张人脸照片是否属于同一个人，提供 `Y = FaceVerification(X1, X2)` 接口：输入两张图片的路径，同人返回 1，异人返回 0。
 并设计了人脸识别系统，支持照片上传、人脸检测与对齐、摄像头拍照和连续验证。
 
 我们完成了三组主要实验：
@@ -10,7 +10,7 @@
 - 直接评估预训练 ViT
 - 微调 ViT。
 
-统一使用原图与水平翻转特征融合时，微调 FaceMobileNet 的 LFW DevTest 准确率为 **97.10%**；预训练 ViT 和微调 ViT 均为 **99.10%**。ViT 微调后的标准十折平均准确率从 **99.15% 提高到 99.20%**，6,000 对图片中净少错 3 对。提升较小，单视图和部分指标未改善，具体对照见第 5 节。
+统一使用原图与水平翻转特征融合时，微调 FaceMobileNet 的 LFW DevTest 准确率为 **97.10%**；预训练 ViT 和微调 ViT 均为 **99.10%**。ViT 微调后的标准十折平均准确率从 **99.15% 提高到 99.20%**，6,000 对图片中净少错 3 对。具体对照见第 5 节。
 
 ## 2. 安装与运行
 
@@ -18,18 +18,17 @@
 
 ```bash
 git clone git@github.com:andorifelse/FaceVerification.git
-cd /home/wzc/datasets/casia/faceRecognitionCASIA # replace your program path
-python -m pip install -r requirements.txt
+huggingface-cli download wawawa111/FaceVerificationCheckpoint --local-dir ./checkpoints
 ```
 
 在项目根目录安装依赖：
 
 ```bash
-cd /home/wzc/datasets/casia/faceRecognitionCASIA # replace your program path
+cd /home/wzc/datasets/casia/faceRecognitionCASIA # replace your path
 python -m pip install -r requirements.txt
 ```
 
-使用我们微调 ViT 的权重时，需将下载好的权重文件放到指定路径 `checkpoints/my_experiments/vit_robust.pth`，并保留配套的 `artifacts/my_experiments/vit_robust_eval/calibration.json`。
+使用我们微调 ViT 的权重时，需将下载好的权重文件放到根目录的指定路径 `checkpoints/my_experiments/vit_robust.pth`，配套的校准配置文件也需要放到根目录的指定路径 `artifacts/my_experiments/vit_robust_eval/calibration.json`。
 预训练初始化可用 `python scripts/download_transformer.py` 下载，微调权重可按第 7 节生成。
 
 ### 2.1 网页演示
@@ -37,10 +36,7 @@ python -m pip install -r requirements.txt
 下面显式加载我们微调后的 ViT 权重：
 
 ```bash
-FACE_DEVICE=cuda:7 \
-FACE_CHECKPOINT=checkpoints/my_experiments/vit_robust.pth \
-FACE_CALIBRATION=artifacts/my_experiments/vit_robust_eval/calibration.json \
-python -c 'from app import create_app; from verification import get_verifier; create_app(verifier=get_verifier()).run(host="127.0.0.1", port=7860)'
+FACE_DEVICE=cuda:7 FACE_CHECKPOINT=checkpoints/my_experiments/vit_robust.pth FACE_CALIBRATION=artifacts/my_experiments/vit_robust_eval/calibration.json python app.py
 ```
 其中：
 
@@ -49,8 +45,6 @@ python -c 'from app import create_app; from verification import get_verifier; cr
 - `FACE_CALIBRATION`：模型校准配置文件路径。
 
 启动后访问 `http://127.0.0.1:7860`，即可看到我们的人脸识别系统。
-
-直接运行 `python app.py` 会使用预训练的 ViT 权重 `checkpoints/transformer.pth`。
 
 ### 2.2 Python 接口与命令行
 
@@ -64,7 +58,7 @@ Y = FaceVerification(root + "/Abel_Pacheco/Abel_Pacheco_0001.jpg",
 print(Y)  # int: 1 or 0
 ```
 
-打开终端，输入命令，你会得到如下结果
+例如，打开终端，输入命令，我们会得到如下结果：
 
 ```bash
 (cifar1) wzc@user-Rack-Server:~/datasets/casia/faceRecognitionCASIA$ python
@@ -95,7 +89,7 @@ python verification.py samples/009.jpg samples/009.jpg \
 - `--calibration`：权重对应的判定阈值。
 - `--detect`：先检测并对齐人脸，再进行验证。
 
-打开终端，输入以上命令，你会得到如下结果
+打开终端，输入以上命令，我们会得到如下结果：
 
 ```bash
 (cifar1) wzc@user-Rack-Server:~/datasets/casia/faceRecognitionCASIA$ python verification.py samples/009.jpg samples/009.jpg \
@@ -128,40 +122,45 @@ python verification.py samples/009.jpg samples/009.jpg \
 
 ## 3. 模型与微调方法
 
-### 3.1 检测与特征提取
+### 3.1 从照片到验证结果
 
-对于人脸检测，我们使用 YuNet 模型，先检测人脸，再根据双眼、鼻尖和嘴角五点做相似变换对齐。无脸、多脸或损坏图片会提示错误。
+系统先用 YuNet 找到照片中的人脸，再根据双眼、鼻尖和两个嘴角的位置调整人脸的角度和大小。照片中没有人脸、出现多张人脸或文件损坏时，系统会提示错误。
 
-对于人脸识别，我们采用 ViT 架构，使用 CVLFace 发布的 `minchul/cvlface_adaface_vit_base_webface4m`，该模型输入为 RGB 112×112，将图像划分为 196 个 8×8 patch，经过 24 个 Transformer 块，输出 512 维特征。
+识别部分使用 CVLFace 发布的预训练 ViT：`minchul/cvlface_adaface_vit_base_webface4m`。它接收 112×112 的彩色人脸图片，将图片分成 196 个小块，经过 24 层 Transformer，得到一个由 512 个数字组成的特征向量，用来表示这张脸。该模型已由作者在 WebFace4M 上使用 AdaFace 方法预训练，我们在它的基础上继续训练。
 
-ViT 初始化由作者使用 WebFace4M 和 AdaFace 预训练；我们在此基础上做本地微调，没有从零完成这部分预训练。
+比较两张照片时，每张照片都处理两次：一次使用原图，一次使用左右镜像后的图片。模型分别提取特征，将两个向量各自调整为长度 1，再相加，并把结果也调整为长度 1。这叫作“翻转融合”；只提取原图特征则叫“单视图”。
 
-推理时，先分别归一化原图和水平翻转图的特征，再相加并归一化，最后计算两张人脸的余弦相似度。我们将这一设置记为“翻转融合”，只使用原图则记为“单视图”。
+两张照片各自得到最终特征后，计算它们的余弦相似度。分数越高，表示两张脸越相似；达到校准得到的阈值，就判断为同一个人。
 
-### 3.2 质量加权与清晰目标一致性
+### 3.2 如何微调 ViT
 
-最初，我们直接微调预训练模型，结果发现，虽然降低训练损失，但没有改善验证效果。随后我们尝试降低离群样本的影响，并让降质输入保留清晰图像的身份信息。
+前期实验中，直接微调虽然让训练损失下降，但测试准确率变化很小。因此，我们从训练图片的权重和清晰度入手做了两项调整。
 
-首先，用初始化 ViT 提取训练图片的原图和翻转特征，融合后按身份求平均，得到身份原型。样本与原型的余弦相似度记为 `q`，训练权重为：
+**第一，降低异常图片对训练的影响。** 用预训练 ViT 提取每张训练图片的特征，再将同一个人的特征取平均，作为这个人的参考特征。图片与参考特征越接近，训练时权重越大；差异特别大的图片，权重较低。设二者的余弦相似度为 `q`，权重为：
 
 ```text
 w = clip((q - 0.25) / 0.5, 0, 1)
 ```
 
-与同身份中心差异较大的样本权重更低。这是特征一致性估计，可能减弱错标或异常图片的影响，但也可能降低真正困难样本的权重。
+这里 `clip` 表示把结果限制在 0 到 1 之间。这种处理可以减弱部分错标或异常图片的影响，但也可能降低侧脸等困难样本的权重。
 
-训练时，以 0.5 概率水平翻转图片，另以 0.5 概率将图片缩至 40、56 或 72 像素后恢复到 112×112。模型处理增强后的输入，保持目标则始终使用对应清晰图片的初始化特征。总损失为：
+**第二，让模糊图片也尽量保留身份信息。** 训练时，每张图片有 50% 的概率左右翻转，另有 50% 的概率先缩小到 40、56 或 72 像素，再恢复为 112×112。模型需要从这些细节减少的图片中提取特征，并尽量接近预训练模型对对应清晰图片提取的特征。
+
+训练目标由两部分组成：
 
 ```text
-L = weighted_mean(CrossEntropy(CosFace(f(x_aug), y)), w)
-  + 2 × weighted_mean(1 - cosine(f(x_aug), e_initial_clean), w)
+总损失 = 按样本权重计算的身份分类损失
+       + 2 × 按样本权重计算的特征差异损失
 ```
 
-CosFace 尺度为 32、间隔为 0.15，分类器由身份原型初始化。只更新最后 4 个 Transformer 块、最终 LayerNorm 和特征投影，冻结前 20 块及 BatchNorm 参数和统计量。
+身份分类损失使用 CosFace，让模型区分不同的人；特征差异损失使用 `1 - 余弦相似度`，让增强后图片的特征接近对应的清晰特征。CosFace 的尺度设为 32、间隔设为 0.15，分类器用各身份的参考特征初始化。
+
+微调时只更新最后 4 个 Transformer 块、最后的 LayerNorm 和特征投影层，前 20 个块及 BatchNorm 的参数和统计量保持固定。这样既保留预训练模型已有的表示能力，也让部分网络适应本地训练数据。
+
 
 ## 4. 实验设置
 
-对于原本的 FaceMobileNet 和 ViT 微调，我们使用相同的 CASIA 清单：4,096 个训练身份、65,536 张图像；256 个验证身份、4,096 张图像，每人 16 张，随机种子为 42。训练与验证身份不重叠，LFW 不参与梯度更新。
+对于原本的 FaceMobileNet 和 ViT 微调，我们使用相同的 CASIA 配置：4,096 个训练身份、65,536 张图像；256 个验证身份、4,096 张图像，每人 16 张，随机种子为 42。
 
 | 设置 | FaceMobileNet 微调 | ViT 微调 |
 |---|---|---|
@@ -171,17 +170,14 @@ CosFace 尺度为 32、间隔为 0.15，分类器由身份原型初始化。只�
 | 特征保持权重 | 10 | 2 |
 | 模型选择 | 清晰 CASIA 验证 balanced accuracy 最大 | 降质 CASIA 验证 AUC 最大，清晰 AUC 回退不超过 0.001 |
 | 选中轮次 | 第 2 轮 | 第 6 轮 |
-| 耗时（含初始化缓存等） | 402.77 秒 | 263.14 秒 |
 
-实验使用 NVIDIA RTX PRO 6000 Blackwell、PyTorch 2.9.1+cu128；ViT 训练采用 BF16。
+实验使用单张 NVIDIA RTX PRO 6000 Blackwell、PyTorch 2.9.1+cu128；ViT 训练采用 BF16。
 
 LFW 采用两种评估协议：DevTrain 的 2,200 对仅用于选择阈值，固定阈值后在 DevTest 的 1,000 对上测试，同人、异人各 500 对；另按官方 6,000 对划分做十折，每折用其余 5,400 对选择阈值，在留出的 600 对上测试。十折期间只重新标定阈值，不重新训练网络，表中的“±”为十折准确率的标准差，不是置信区间。
 
 Accuracy 表示全部配对中判断正确的比例；FAR 为异人误判同人的比例，FRR 为同人误判异人的比例。AUC 衡量不同阈值下的整体区分能力，EER 为 FAR 与 FRR 相等附近的错误率。Accuracy、AUC 越高越好，FAR、FRR、EER 越低越好。
 
-## 5. 主要实验结果
-
-本节全部来自本次 `artifacts/my_experiments/`，与下一节的早期探索分开记录。
+## 5. 实验结果
 
 ### 5.1 翻转融合
 
@@ -194,7 +190,7 @@ Accuracy 表示全部配对中判断正确的比例；FAR 为异人误判同人�
 
 FaceMobileNet 微调后，DevTest 从 96.7% 提高到 97.1%，十折错误从 207 对降到 196 对。但 DevTest 误接受从 8 对增至 11 对，误拒绝从 25 对降至 18 对，说明准确率改善也伴随了取舍。
 
-ViT 微调前后的 DevTest 均为 99.1%。十折准确率提高 0.05 个百分点，错误从 51 对降至 48 对；DevTest AUC 略降，EER 不变。因此本次微调有小幅十折收益，但没有全面超过初始化。
+ViT 微调前后的 DevTest 均为 99.1%。十折准确率提高 0.05 个百分点，错误从 51 对降至 48 对；DevTest AUC 略降，EER 不变。因此本次微调有小幅十折收益，但没有全面超过预训练的模型。
 
 ### 5.2 单视图对照
 
@@ -215,25 +211,8 @@ FaceMobileNet 总损失从 2.8602 降至 1.2956，验证 balanced accuracy 在�
 
 ![训练与模型选择](artifacts/my_experiments/summary/training_curves.png)
 
-## 6. 补充探索：类内变化抑制投影
 
-在此前一次独立运行中，我们还尝试了类内协方差投影：过滤与身份中心余弦相似度小于 0.3 的训练样本，用各样本相对身份均值的残差估计类内协方差，再做收缩正则和部分白化，以减弱同人变化较大的特征方向。投影采用闭式拟合，不是额外的 Transformer 梯度训练。
-
-正则系数在 `{0.05, 0.2, 0.5}`、白化强度在 `{0.25, 0.5, 0.75, 1.0}` 中选择，只使用 CASIA 验证数据。组合方法按清晰与降质验证 AUC 的均值选出。下面保留该次运行的模块对照，不将其与之前微调 ViT 的第 6 轮权重混用。
-
-| 方法 | 原始 LFW 十折 | 降质 DevTest | 降质 LFW 十折 |
-|---|---:|---:|---:|
-| 预训练 ViT | 99.15% | 98.10% | 98.37% |
-| 普通微调 | 99.17% | 97.90% | 98.28% |
-| 仅类内投影 | 99.17% | 97.90% | 98.23% |
-| 质量加权增强微调 | 99.22% | 98.00% | 98.27% |
-| 增强微调 + 类内投影 | 99.10% | 98.30% | 98.33% |
-
-降质诊断统一将图片缩为 40×40、以 JPEG 质量 45 编码，再恢复为 112×112，并在降质校准集上重新标定阈值。
-组合方法改善了降质 DevTest，但原始十折略退，说明抑制类内变化不一定带来更高准确率。
-
-
-## 7. 复现与记录
+## 6. 复现与记录
 
 以下命令需在项目根目录运行。CASIA 和 LFW 数据路径见 `config.py`。
 
@@ -273,18 +252,10 @@ python evaluate.py \
   --output artifacts/my_experiments/vit_robust_eval --device cuda:7
 ```
 
-训练参数、数据划分和选中轮次位于各训练目录的 `training.json`、`split.json`；逐对预测和十折指标位于各评估目录的 `predictions.csv`、`evaluation.json`。完整指标表见 [实验汇总](artifacts/my_experiments/summary/summary.md)。
+训练参数、数据划分和选中轮次位于各训练目录的 `training.json`、`split.json`；逐对预测和十折指标位于各评估目录的 `predictions.csv`、`evaluation.json`。
 
-FaceMobileNet 平均总损失由 2.860218 到 1.295646；CASIA 验证 balanced accuracy 初始为 91.37%，第 2 轮达到 93.33%。
-
-ViT 平均总损失由 0.112846 到 0.025960；降质 CASIA 验证 AUC 初始为 0.962823，按既定规则选中第 6 轮，其降质 AUC 为 0.964114，清晰 AUC 为 0.972378。
-
-![训练与选模型过程](training_curves.png)
-
-
-## 8. 参考资料
+## 7. 参考资料
 
 - [CVLFace 代码](https://github.com/mk-minchul/CVLface)与[固定版本 ViT 权重](https://huggingface.co/minchul/cvlface_adaface_vit_base_webface4m/tree/c6fed2ff09ac0a29cccc72c09127ad7b4bd3fa9e)。
 - [Vision Transformer](https://arxiv.org/abs/2010.11929)、[AdaFace](https://arxiv.org/abs/2204.00964) 与 [CosFace](https://openaccess.thecvf.com/content_cvpr_2018/html/Wang_CosFace_Large_Margin_CVPR_2018_paper.html)。
 - [YuNet 检测器](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)。
-
