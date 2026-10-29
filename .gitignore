@@ -62,3 +62,4 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.template
+.mp4

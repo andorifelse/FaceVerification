@@ -44,7 +44,7 @@ FACE_DEVICE=cuda:7 FACE_CHECKPOINT=checkpoints/my_experiments/vit_robust.pth FAC
 - `FACE_CHECKPOINT`：模型权重文件路径。
 - `FACE_CALIBRATION`：模型校准配置文件路径。
 
-启动后访问 `http://127.0.0.1:7860`，即可看到我们的人脸识别系统。
+启动后访问 `http://127.0.0.1:7860`，即可看到我们的人脸识别系统。关于app的使用，请看`app_demo.mp4`。
 
 ### 2.2 Python 接口与命令行
 
